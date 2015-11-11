@@ -71,9 +71,12 @@ public class EpsEstimator {
 					reader = new BufferedReader(new FileReader(file.getAbsoluteFile()));
 					String point = null;
 					while((point = reader.readLine()) != null) {
-						String[] a = point.split("\t");
+						String[] a = point.split("[\t,;\\s]+");
 						if(a.length == 2) {
-							allPoints.add(new KPoint2D(Double.parseDouble(a[0]), Double.parseDouble(a[1])));
+							KPoint2D kp = new KPoint2D(Double.parseDouble(a[0]), Double.parseDouble(a[1]));
+							if(!allPoints.contains(kp)) {
+								allPoints.add(kp);
+							}
 						}
 					}
 				} catch (Exception e1) {
