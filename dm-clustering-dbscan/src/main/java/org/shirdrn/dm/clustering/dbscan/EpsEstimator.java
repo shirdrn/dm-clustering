@@ -17,9 +17,10 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.shirdrn.dm.clustering.common.MetricUtils;
 import org.shirdrn.dm.clustering.common.NamedThreadFactory;
 import org.shirdrn.dm.clustering.common.Point2D;
+import org.shirdrn.dm.clustering.common.utils.FileUtils;
+import org.shirdrn.dm.clustering.common.utils.MetricUtils;
 
 import com.google.common.base.Throwables;
 import com.google.common.cache.Cache;
@@ -41,8 +42,7 @@ public class EpsEstimator {
 	private int calculatorCount = 5;
 	private int calculatorQueueSize = 200;
 	private volatile boolean completeToAssignTask = false;
-	private double selectedKDistance;
-	private EpsComputationPolicy epsComputationpsPolicy = new DefaultEpsComputationPolicy();
+	private boolean isOutoutKDsitance = true;
 	
 	public EpsEstimator() {
 		this(4, 5);
@@ -62,6 +62,10 @@ public class EpsEstimator {
 		return allPoints.iterator();
 	}
 	
+	public void setOutoutKDsitance(boolean isOutoutKDsitance) {
+		this.isOutoutKDsitance = isOutoutKDsitance;
+	}
+	
 	public EpsEstimator computeKDistance(File... files) {
 		// parse sample files
 		try {
@@ -71,17 +75,18 @@ public class EpsEstimator {
 					reader = new BufferedReader(new FileReader(file.getAbsoluteFile()));
 					String point = null;
 					while((point = reader.readLine()) != null) {
-						String[] a = point.split("\t");
+						String[] a = point.split("[\t,;\\s]+");
 						if(a.length == 2) {
-							allPoints.add(new KPoint2D(Double.parseDouble(a[0]), Double.parseDouble(a[1])));
+							KPoint2D kp = new KPoint2D(Double.parseDouble(a[0]), Double.parseDouble(a[1]));
+							if(!allPoints.contains(kp)) {
+								allPoints.add(kp);
+							}
 						}
 					}
 				} catch (Exception e1) {
 					e1.printStackTrace();
 				} finally {
-					if(reader != null) {
-						reader.close();
-					}
+					FileUtils.closeQuietly(reader);
 				}
 			}
 			
@@ -100,8 +105,7 @@ public class EpsEstimator {
 					while(true) {
 						KDistanceCalculator calculator = getCalculator();
 						Task task = new Task(allPoints.get(i), i);
-						boolean offered = calculator.q.offer(task);
-						if(!offered) {
+						if(!calculator.q.offer(task)) {
 							continue;
 						}
 						LOG.debug("Assign Point[" + task.p + "] to " + calculator);
@@ -124,7 +128,7 @@ public class EpsEstimator {
 		return this;
 	}
 	
-	public EpsEstimator estimateEps() {
+	public void estimateEps() {
 		// sort k-distance s
 		Collections.sort(allPoints, new Comparator<Point2D>() {
 
@@ -140,39 +144,13 @@ public class EpsEstimator {
 			}
 			
 		});
-
-		LOG.info("Compute Eps...");
-		selectedKDistance = 0.0045454545; // epsComputationpsPolicy.compute();
-		LOG.info("Eps computed: selectedKDistance=" + selectedKDistance);
-		return this;
-	}
-
-	private class DefaultEpsComputationPolicy implements EpsComputationPolicy {
-
-		@Override
-		public double compute() {
-			double eps = 0.0;
-			double maxDiff = 0.0;
-			float pruneTailRate = 0.0F;
-			int discardCount = (int) (allPoints.size() * pruneTailRate);
-			int startIndex = 0;
-			int endIndex = allPoints.size() - discardCount;
-			LOG.info("Prune: pruneTailRate=" + pruneTailRate + ", startIndex=" + startIndex + ", endIndex=" + endIndex);
-			
-			KPoint2D kp1 = (KPoint2D) allPoints.get(startIndex);
-			eps = kp1.kDistance;
-			for(int i=startIndex + 1; i<endIndex; i++) {
-				KPoint2D kp2 = (KPoint2D) allPoints.get(i);
-				double diff = kp2.kDistance - kp1.kDistance;
-				if(diff > maxDiff) {
-					maxDiff = diff;
-					eps = kp2.kDistance;
-				}
-				kp1 = kp2;
-			}
-			return eps;
-		}
 		
+		if(isOutoutKDsitance) {
+			for(int i=0; i<allPoints.size(); i++) {
+				KPoint2D kp = (KPoint2D) allPoints.get(i);
+				System.out.println(i + "\t" + kp.kDistance);
+			}
+		}
 	}
 
 	private KDistanceCalculator getCalculator() {
@@ -279,10 +257,16 @@ public class EpsEstimator {
 			super(x, y);
 		}
 		
-	}
-	
-	public double getSelectedKDistance() {
-		return selectedKDistance;
+		@Override
+		public int hashCode() {
+			return super.hashCode();
+		}
+		
+		@Override
+		public boolean equals(Object obj) {
+			return super.equals(obj);
+		}
+		
 	}
 	
 }

@@ -30,11 +30,12 @@ public class DBSCANClustering implements Clustering {
 	private final EpsEstimator epsEstimator;
 	private final Map<Point2D, Set<Point2D>> corePointScopeSet = Maps.newHashMap();
 	private final Map<Point2D, Set<Point2D>> clusteredPoints = Maps.newHashMap();
-	private final List<Point2D> noisePoints = Lists.newArrayList();
+	private final Set<Point2D> noisePoints = Sets.newHashSet();
 	private final CountDownLatch latch;
 	private final ExecutorService executorService;
 	private final int parallism;
 	private final BlockingQueue<Point2D> taskQueue;
+	private volatile boolean completed = false;
 	private int clusterCount;
 	
 	public DBSCANClustering(int minPts, int parallism) {
@@ -48,13 +49,13 @@ public class DBSCANClustering implements Clustering {
 		LOG.info("Config: minPts=" + minPts + ", parallism=" + parallism);
 	}
 	
+	public void generateSortedKDistances(File... files) {
+		epsEstimator.computeKDistance(files).estimateEps();
+	}
+	
 	@Override
-	public void clustering(File... files) {
-		minPts = 4;
-		eps = epsEstimator.computeKDistance(files).estimateEps().getSelectedKDistance();
-		LOG.info("Eps got: eps=" + eps);
-		
-		// recognize core point
+	public void clustering() {
+		// recognize core points
 		try {
 			for (int i = 0; i < parallism; i++) {
 				CorePointCalculator calculator = new CorePointCalculator();
@@ -68,11 +69,13 @@ public class DBSCANClustering implements Clustering {
 				while(!taskQueue.offer(p)) {
 					Thread.sleep(5);
 				}
+				LOG.debug("Added to taskQueue: " + p);
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
 		} finally {
 			try {
+				completed = true;
 				latch.await();
 			} catch (InterruptedException e) { }
 			LOG.info("Shutdown executor service: " + executorService);
@@ -102,7 +105,17 @@ public class DBSCANClustering implements Clustering {
 		displayClusters();
 	}
 	
+	public void setMinPts(int minPts) {
+		this.minPts = minPts;
+	}
+
 	private void displayClusters() {
+		// display noise points
+		int noiseClusterId = -1;
+		for(Point2D p : noisePoints) {
+			System.out.println(p.getX() + "," + p.getY() + "," + noiseClusterId);
+		}
+		
 		// display core points
 		Iterator<Entry<Point2D, Set<Point2D>>> coreIter = clusteredPoints.entrySet().iterator();
 		int id = 0;
@@ -112,24 +125,15 @@ public class DBSCANClustering implements Clustering {
 			Set<Point2D> set = Sets.newHashSet();
 			set.add(core.getKey());
 			set.addAll(corePointScopeSet.get(core.getKey()));
-//			System.out.println("== CLUSTER(" + (++id) + ") == ]");
 			for(Point2D p : core.getValue()) {
 				set.addAll(core.getValue());
 				set.addAll(corePointScopeSet.get(p));
 			}
-			for(Point2D ap : set) {
-				System.out.println(ap + ", " + id);
-			}
-//			System.out.println();
-			
-			for(Point2D p : core.getValue()) {
-				LOG.debug(corePointScopeSet.get(p));
+			for(Point2D p : set) {
+				System.out.println(p.getX() + "," + p.getY() + "," + id);
 			}
 		}
 		
-		// display noise points
-		LOG.info("== NOISE ==");
-		LOG.info(noisePoints);
 	}
 	
 	private Set<Point2D> joinConnectedCorePoints(List<Point2D> connectedPoints, List<Point2D> leftCorePoints) {
@@ -153,6 +157,10 @@ public class DBSCANClustering implements Clustering {
 		return clusterCount;
 	}
 	
+	public void setEps(double eps) {
+		this.eps = eps;
+	}
+	
 	/**
 	 * Compute core point and points in this scope
 	 *
@@ -167,7 +175,7 @@ public class DBSCANClustering implements Clustering {
 		public void run() {
 			try {
 				Thread.sleep(1000);
-				while(!taskQueue.isEmpty()) {
+				while(!completed || !taskQueue.isEmpty()) {
 					Point2D p1 = taskQueue.poll();
 					if(p1 != null) {
 						++processedPoints;
@@ -188,8 +196,12 @@ public class DBSCANClustering implements Clustering {
 							corePointScopeSet.put(p1, set);
 							LOG.debug("Decide core point: point" + p1 + ", set=" + set);
 						} else {
-							noisePoints.add(p1);
+							if(!noisePoints.contains(p1)) {
+								noisePoints.add(p1);
+							}
 						}
+					} else {
+						Thread.sleep(50);
 					}
 				}
 			} catch (Exception e) {
@@ -201,9 +213,27 @@ public class DBSCANClustering implements Clustering {
 		}
 	}
 	
+	public EpsEstimator getEpsEstimator() {
+		return epsEstimator;
+	}
+	
 	public static void main(String[] args) {
-		Clustering c = new DBSCANClustering(4, 5);
-		c.clustering(new File("C:\\Users\\yanjun\\Desktop\\xy_zfmx.txt"));
+		// generate sorted k-distances sequences
+		DBSCANClustering c = new DBSCANClustering(4, 5);
+		c.getEpsEstimator().setOutoutKDsitance(false);
+		c.generateSortedKDistances(new File("C:\\Users\\yanjun\\Desktop\\xy_zfmx.txt"));
+		
+		// execute clustering procedure
+
+//		double eps = 0.0025094814205335555;
+		double eps = 0.004417483559674606;
+//		double eps = 0.005547485196013346;
+//		double eps = 0.006147849217403014;
+
+
+		c.setEps(eps);
+		c.setMinPts(4);
+		c.clustering();
 	}
 
 }
