@@ -2,7 +2,6 @@ package org.shirdrn.dm.clustering.dbscan;
 
 import java.io.File;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -18,7 +17,6 @@ import org.shirdrn.dm.clustering.common.Clustering;
 import org.shirdrn.dm.clustering.common.NamedThreadFactory;
 import org.shirdrn.dm.clustering.common.Point2D;
 
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 
@@ -67,7 +65,7 @@ public class DBSCANClustering implements Clustering {
 			while(iter.hasNext()) {
 				Point2D p = iter.next();
 				while(!taskQueue.offer(p)) {
-					Thread.sleep(5);
+					Thread.sleep(10);
 				}
 				LOG.debug("Added to taskQueue: " + p);
 			}
@@ -81,28 +79,72 @@ public class DBSCANClustering implements Clustering {
 			LOG.info("Shutdown executor service: " + executorService);
 			executorService.shutdown();
 		}
-		LOG.info("Point statistics: corePointSize=" + corePointScopeSet.keySet().size() + ", noisePointSize=" + noisePoints.size());
+		LOG.info("Point statistics: corePointSize=" + corePointScopeSet.keySet().size());
 		
 		// join connected core points
 		LOG.info("Joining connected points ...");
-		List<Point2D> corePoints = Lists.newArrayList(corePointScopeSet.keySet());
-		while(!corePoints.isEmpty()) {
+		Set<Point2D> corePoints = Sets.newHashSet(corePointScopeSet.keySet());
+		while(true) {
 			Set<Point2D> set = Sets.newHashSet();
-			Point2D p = corePoints.remove(0);
-			Set<Point2D> collectedPoints = joinConnectedCorePoints(Lists.newArrayList(p), corePoints);
-			while(!collectedPoints.isEmpty()) {
-				corePoints.removeAll(collectedPoints);
-				set.addAll(collectedPoints);
-				collectedPoints = joinConnectedCorePoints(Lists.newArrayList(collectedPoints), corePoints);
+			Iterator<Point2D> iter = corePoints.iterator();
+			if(iter.hasNext()) {
+				Point2D p = iter.next();
+				iter.remove();
+				Set<Point2D> connectedPoints = joinConnectedCorePoints(p, corePoints);
+				set.addAll(connectedPoints);
+				while(!connectedPoints.isEmpty()) {
+					connectedPoints = joinConnectedCorePoints(connectedPoints, corePoints);
+					set.addAll(connectedPoints);
+				}
+				clusteredPoints.put(p, set);
+			} else {
+				break;
 			}
-			clusteredPoints.put(p, set);
 		}
 		
 		clusterCount = clusteredPoints.size();
-		LOG.info("Finished clustering: clusterCount=" + clusterCount);
 		
+		// process noise points
+		Iterator<Point2D> iter = noisePoints.iterator();
+		while(iter.hasNext()) {
+			Point2D np = iter.next();
+			if(corePointScopeSet.containsKey(np)) {
+				iter.remove();
+			} else {
+				for(Set<Point2D> set : corePointScopeSet.values()) {
+					if(set.contains(np)) {
+						iter.remove();
+						break;
+					}
+				}
+			}
+		}
+		
+		LOG.info("Finished clustering: clusterCount=" + clusterCount + ", noisePointCount=" + noisePoints.size());
 		
 		displayClusters();
+	}
+	
+	private Set<Point2D> joinConnectedCorePoints(Set<Point2D> connectedPoints, Set<Point2D> leftCorePoints) {
+		Set<Point2D> set = Sets.newHashSet();
+		for(Point2D p1 : connectedPoints) {
+			set.addAll(joinConnectedCorePoints(p1, leftCorePoints));
+		}
+		return set;
+	}
+	
+	private Set<Point2D> joinConnectedCorePoints(Point2D p1, Set<Point2D> leftCorePoints) {
+		Set<Point2D> set = Sets.newHashSet();
+		for(Point2D p2 : leftCorePoints) {
+			double distance = epsEstimator.getDistance(Sets.newHashSet(p1, p2));
+			if(distance <= eps) {
+				// join 2 core points to the same cluster
+				set.add(p2);
+			}
+		}
+		// remove connected points
+		leftCorePoints.removeAll(set);
+		return set;
 	}
 	
 	public void setMinPts(int minPts) {
@@ -136,22 +178,6 @@ public class DBSCANClustering implements Clustering {
 		
 	}
 	
-	private Set<Point2D> joinConnectedCorePoints(List<Point2D> connectedPoints, List<Point2D> leftCorePoints) {
-		Set<Point2D> set = Sets.newHashSet();
-		for (int i = 0; i < connectedPoints.size(); i++) {
-			Point2D p1 = connectedPoints.get(i);
-			for (int j = 0; j < leftCorePoints.size(); j++) {
-				Point2D p2 = leftCorePoints.get(j);
-				double distance = epsEstimator.getDistance(Sets.newHashSet(p1, p2));
-				if(distance <= eps) {
-					// join 2 core points to the same cluster
-					set.add(p2);
-				}
-			}
-		}
-		return set;
-	}
-	
 	@Override
 	public int getClusteredCount() {
 		return clusterCount;
@@ -166,7 +192,7 @@ public class DBSCANClustering implements Clustering {
 	 *
 	 * @author yanjun
 	 */
-	class CorePointCalculator extends Thread {
+	private final class CorePointCalculator extends Thread {
 		
 		private final Log LOG = LogFactory.getLog(CorePointCalculator.class);
 		private int processedPoints;
@@ -196,6 +222,8 @@ public class DBSCANClustering implements Clustering {
 							corePointScopeSet.put(p1, set);
 							LOG.debug("Decide core point: point" + p1 + ", set=" + set);
 						} else {
+							// here, perhaps a point was wrongly put into noise point set
+							// afterwards we should remedy noise point set
 							if(!noisePoints.contains(p1)) {
 								noisePoints.add(p1);
 							}
@@ -219,16 +247,16 @@ public class DBSCANClustering implements Clustering {
 	
 	public static void main(String[] args) {
 		// generate sorted k-distances sequences
-		DBSCANClustering c = new DBSCANClustering(4, 5);
+		int minPts = 10;
+		DBSCANClustering c = new DBSCANClustering(minPts, 8);
 		c.getEpsEstimator().setOutoutKDsitance(false);
 		c.generateSortedKDistances(new File("C:\\Users\\yanjun\\Desktop\\xy_zfmx.txt"));
 		
 		// execute clustering procedure
-
 //		double eps = 0.0025094814205335555;
-		double eps = 0.004417483559674606;
+//		double eps = 0.004417483559674606;
 //		double eps = 0.005547485196013346;
-//		double eps = 0.006147849217403014;
+		double eps = 0.006147849217403014;
 
 
 		c.setEps(eps);

@@ -234,23 +234,23 @@ public class ClusteringXYChart extends JFrame {
 		this.clusterPointFile = clusterPointFile;
 	}
 	
-	private static File getClusterPointFile(String[] args, String dir, String eps) {
+	private static File getClusterPointFile(String[] args, String dir, int minPts, String eps) {
 		if(args.length > 0) {
 			return new File(args[0]);
 		}
-		return new File(new File(dir), eps + ".txt");		
+		return new File(new File(dir), minPts + "_" + eps + ".txt");		
 	}
 	
 	public static void main(String args[]) {
 		int minPts = 4;
-//		String eps = "0.0025094814205335555";
+		String eps = "0.0025094814205335555";
 //		String eps = "0.004417483559674606";
-		String eps = "0.005547485196013346";
+//		String eps = "0.005547485196013346";
 //		String eps = "0.006147849217403014";
 		
 		String chartTitle = "DBSCAN [Eps=" + eps + ", minPts=" + minPts + "]";
 		String dir = "C:\\Users\\yanjun\\Desktop";
-		File clusterPointFile = getClusterPointFile(args, dir, eps);
+		File clusterPointFile = getClusterPointFile(args, dir, minPts, eps);
 		
 		final ClusteringXYChart chart = new ClusteringXYChart(chartTitle);
 		chart.setclusterPointFile(clusterPointFile);
