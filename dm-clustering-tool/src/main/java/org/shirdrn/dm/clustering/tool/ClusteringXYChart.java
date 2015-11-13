@@ -212,8 +212,10 @@ public class ClusteringXYChart extends JFrame {
 			private static final long serialVersionUID = 1L;
 			@Override
             public void actionPerformed(ActionEvent e) {
-				for(ClusterPoint2D p : noisePoints) {
-					noiseXYSeries.add(p.getX(), p.getY());
+				if(noiseXYSeries.isEmpty()) {
+					for(ClusterPoint2D p : noisePoints) {
+						noiseXYSeries.add(p.getX(), p.getY());
+					}
 				}
             }
         }));
@@ -223,7 +225,9 @@ public class ClusteringXYChart extends JFrame {
 			private static final long serialVersionUID = 1L;
 			@Override
             public void actionPerformed(ActionEvent e) {
-				noiseXYSeries.clear();
+				if(!noiseXYSeries.isEmpty()) {
+					noiseXYSeries.clear();
+				}
             }
         }));
         
