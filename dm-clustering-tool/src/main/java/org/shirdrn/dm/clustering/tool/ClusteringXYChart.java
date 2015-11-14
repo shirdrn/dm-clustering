@@ -17,6 +17,7 @@ import java.util.Random;
 import java.util.Set;
 
 import javax.swing.AbstractAction;
+import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
@@ -51,7 +52,7 @@ public class ClusteringXYChart extends JFrame {
 	private final Set<ClusterPoint2D> noisePoints = Sets.newHashSet();
 	private int noisePointsClusterId;
 	private XYSeries noiseXYSeries;
-	private Color noisePointColor;
+	private Color noisePointsColor;
 	private final List<Color> colorSpace = Lists.newArrayList();
 	private final Random rand = new Random();
 	
@@ -76,12 +77,6 @@ public class ClusteringXYChart extends JFrame {
 			xySeriesCollection.addSeries(xySeries);
 		}
 		return xySeriesCollection;
-	}
-	
-	private void setNoisePointColor() {
-        if(noisePointColor == null && !colorSpace.isEmpty()) {
-        	noisePointColor = selectColorRandomly();
-        }
 	}
 	
 	public Map<Integer, Color> generateColors(Set<Integer> clusterIdSet) {
@@ -165,7 +160,7 @@ public class ClusteringXYChart extends JFrame {
 		}
 		
 		// set virtual noise cluster id
-		noisePointsClusterId = points.size() + 1;
+		noisePointsClusterId = 9999;
 				
 		return points;
 	}
@@ -178,10 +173,11 @@ public class ClusteringXYChart extends JFrame {
 		
 		// create chart & configure xy plot
 		JFreeChart jfreechart = ChartFactory.createScatterPlot(null, "X", "Y", xyDataset, PlotOrientation.VERTICAL, true, true, false);
-		TextTitle title = new TextTitle(chartTitle, new Font("Lucida Console", Font.BOLD, 16), 
+		TextTitle title = new TextTitle(chartTitle, new Font("Lucida Sans Unicode", Font.BOLD, 14), 
 				Color.DARK_GRAY, RectangleEdge.TOP, HorizontalAlignment.CENTER, 
 				VerticalAlignment.TOP, RectangleInsets.ZERO_INSETS);
 		jfreechart.setTitle(title);
+		
 		XYPlot xyPlot = (XYPlot) jfreechart.getPlot();
 		xyPlot.setDomainCrosshairVisible(true);
 		xyPlot.setRangeCrosshairVisible(true);
@@ -197,7 +193,7 @@ public class ClusteringXYChart extends JFrame {
 		
 		// render noise series
 		setNoisePointColor();
-		renderer.setSeriesPaint(noisePointsClusterId, noisePointColor);
+		renderer.setSeriesPaint(noisePointsClusterId, noisePointsColor);
 		
 		NumberAxis domain = (NumberAxis) xyPlot.getDomainAxis();
 		domain.setVerticalTickLabels(true);
@@ -206,6 +202,7 @@ public class ClusteringXYChart extends JFrame {
 		this.add(chartPanel, BorderLayout.CENTER);
         
 		JPanel panel = new JPanel();
+		panel.setBorder(BorderFactory.createLineBorder(Color.BLACK, 1, false));
         
         // display noise points
         panel.add(new JButton(new AbstractAction("Display Noise Points") {
@@ -238,7 +235,14 @@ public class ClusteringXYChart extends JFrame {
 		this.clusterPointFile = clusterPointFile;
 	}
 	
-	private static File getClusterPointFile(String[] args, String dir, int minPts, String eps) {
+	private void setNoisePointColor() {
+        if(noisePointsColor == null && !colorSpace.isEmpty()) {
+        	noisePointsColor = selectColorRandomly();
+        }
+	}
+
+	
+	private static File getClusterPointFile(String[] args, String dir, int minPts, double eps) {
 		if(args.length > 0) {
 			return new File(args[0]);
 		}
@@ -246,13 +250,17 @@ public class ClusteringXYChart extends JFrame {
 	}
 	
 	public static void main(String args[]) {
-		int minPts = 4;
-		String eps = "0.0025094814205335555";
-//		String eps = "0.004417483559674606";
-//		String eps = "0.005547485196013346";
-//		String eps = "0.006147849217403014";
+//		int minPts = 4;
+//		double eps = 0.0025094814205335555;
+//		double eps = 0.004417483559674606;
+//		double eps = 0.006147849217403014;
 		
-		String chartTitle = "DBSCAN [Eps=" + eps + ", minPts=" + minPts + "]";
+		int minPts = 8;
+//		double eps = 0.004900098978598581;
+//		double eps = 0.009566439044911;
+		double eps = 0.013621050253196359;
+		
+		String chartTitle = "DBSCAN [Eps=" + eps + ", MinPts=" + minPts + "]";
 		String dir = "C:\\Users\\yanjun\\Desktop";
 		File clusterPointFile = getClusterPointFile(args, dir, minPts, eps);
 		

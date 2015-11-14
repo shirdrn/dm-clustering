@@ -82,7 +82,7 @@ public class DBSCANClustering implements Clustering {
 		LOG.info("Point statistics: corePointSize=" + corePointScopeSet.keySet().size());
 		
 		// join connected core points
-		LOG.info("Joining connected points ...");
+		LOG.info("Joining connected core points ...");
 		Set<Point2D> corePoints = Sets.newHashSet(corePointScopeSet.keySet());
 		while(true) {
 			Set<Point2D> set = Sets.newHashSet();
@@ -101,8 +101,8 @@ public class DBSCANClustering implements Clustering {
 				break;
 			}
 		}
-		
 		clusterCount = clusteredPoints.size();
+		LOG.info("Connected core points computed.");
 		
 		// process noise points
 		Iterator<Point2D> iter = noisePoints.iterator();
@@ -247,7 +247,8 @@ public class DBSCANClustering implements Clustering {
 	
 	public static void main(String[] args) {
 		// generate sorted k-distances sequences
-		int minPts = 10;
+//		int minPts = 4;
+		int minPts = 8;
 		DBSCANClustering c = new DBSCANClustering(minPts, 8);
 		c.getEpsEstimator().setOutoutKDsitance(false);
 		c.generateSortedKDistances(new File("C:\\Users\\yanjun\\Desktop\\xy_zfmx.txt"));
@@ -255,8 +256,12 @@ public class DBSCANClustering implements Clustering {
 		// execute clustering procedure
 //		double eps = 0.0025094814205335555;
 //		double eps = 0.004417483559674606;
-//		double eps = 0.005547485196013346;
-		double eps = 0.006147849217403014;
+//		double eps = 0.006147849217403014;
+		
+		
+//		double eps = 0.004900098978598581;
+//		double eps = 0.009566439044911;
+		double eps = 0.013621050253196359;
 
 
 		c.setEps(eps);
