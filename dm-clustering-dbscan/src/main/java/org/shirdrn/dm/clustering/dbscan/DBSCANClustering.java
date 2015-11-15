@@ -13,10 +13,11 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.shirdrn.dm.clustering.common.Clustering;
+import org.shirdrn.dm.clustering.common.AbstractClustering;
 import org.shirdrn.dm.clustering.common.NamedThreadFactory;
 import org.shirdrn.dm.clustering.common.Point2D;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 
@@ -25,14 +26,13 @@ import com.google.common.collect.Sets;
  * 
  * @author yanjun
  */
-public class DBSCANClustering implements Clustering {
+public class DBSCANClustering extends AbstractClustering {
 
 	private static final Log LOG = LogFactory.getLog(DBSCANClustering.class);
 	private double eps;
 	private int minPts;
 	private final EpsEstimator epsEstimator;
 	private final Map<Point2D, Set<Point2D>> corePointWithNeighboursSet = Maps.newHashMap();
-	private final Map<Point2D, Set<Point2D>> clusteredPoints = Maps.newHashMap();
 	private final Set<Point2D> noisePoints = Sets.newHashSet();
 	private final CountDownLatch latch;
 	private final ExecutorService executorService;
@@ -52,8 +52,9 @@ public class DBSCANClustering implements Clustering {
 		LOG.info("Config: minPts=" + minPts + ", parallism=" + parallism);
 	}
 	
-	public void generateSortedKDistances(File... files) {
-		epsEstimator.computeKDistance(files).estimateEps();
+	public void generateSortedKDistances() {
+		Preconditions.checkArgument(inputFiles != null, "inputFiles == null");
+		epsEstimator.computeKDistance(inputFiles).estimateEps();
 	}
 	
 	@Override
@@ -106,7 +107,6 @@ public class DBSCANClustering implements Clustering {
 				break;
 			}
 		}
-		clusterCount = clusteredPoints.size();
 		LOG.info("Connected core points computed.");
 		
 		// process noise points
@@ -181,11 +181,6 @@ public class DBSCANClustering implements Clustering {
 			}
 		}
 		
-	}
-	
-	@Override
-	public int getClusteredCount() {
-		return clusterCount;
 	}
 	
 	public void setEps(double eps) {
@@ -263,8 +258,9 @@ public class DBSCANClustering implements Clustering {
 //		double eps = 0.013621050253196359;
 		
 		DBSCANClustering c = new DBSCANClustering(minPts, 8);
+		c.setInputFiles(new File("C:\\Users\\yanjun\\Desktop\\xy_zfmx.txt"));
 		c.getEpsEstimator().setOutputKDsitance(false);
-		c.generateSortedKDistances(new File("C:\\Users\\yanjun\\Desktop\\xy_zfmx.txt"));
+		c.generateSortedKDistances();
 		
 		// execute clustering procedure
 		c.setEps(eps);

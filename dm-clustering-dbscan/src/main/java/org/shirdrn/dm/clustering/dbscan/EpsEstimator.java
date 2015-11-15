@@ -38,11 +38,10 @@ public class EpsEstimator {
 	private Cache<Set<Point2D>, Double> distanceCache;
 	private int k = 4;
 	private int parallism = 5;
+	private final ExecutorService executorService;
 	private CountDownLatch latch;
 	private final List<KDistanceCalculator> calculators = Lists.newArrayList();
-	private final ExecutorService executorService;
 	private int taskIndex = 0;
-	private int calculatorCount = 5;
 	private int calculatorQueueSize = 200;
 	private volatile boolean completeToAssignTask = false;
 	private boolean isOutputKDsitance = true;
@@ -70,10 +69,8 @@ public class EpsEstimator {
 	}
 	
 	public EpsEstimator computeKDistance(File... files) {
-		// parse sample files
-		try {
+			// parse sample files
 			FileUtils.read2DPointsFromFiles(allPoints, "[\t,;\\s]+", files);
-			
 			// compute k-distance
 			try {
 				for (int i = 0; i < parallism; i++) {
@@ -82,7 +79,6 @@ public class EpsEstimator {
 					executorService.execute(calculator);
 					LOG.info("k-distance calculator started: " + calculator);
 				}
-				calculatorCount = calculators.size();
 				
 				// convert Point2D to KPoint2D
 				for(int i=0; i<allPoints.size(); i++) {
@@ -105,6 +101,8 @@ public class EpsEstimator {
 				LOG.info("Input: totalPoints=" + allPoints.size());
 				
 				completeToAssignTask = true;
+			} catch(Exception e) {
+				throw Throwables.propagate(e);
 			} finally {
 				try {
 					latch.await();
@@ -112,9 +110,6 @@ public class EpsEstimator {
 				LOG.info("Shutdown executor service: " + executorService);
 				executorService.shutdown();
 			}
-		}  catch (Exception e) {
-			throw Throwables.propagate(e);
-		}
 		return this;
 	}
 	
@@ -144,7 +139,7 @@ public class EpsEstimator {
 	}
 
 	private KDistanceCalculator getCalculator() {
-		int index = taskIndex++ % calculatorCount;
+		int index = taskIndex++ % parallism;
 		return calculators.get(index);
 	}
 

@@ -9,6 +9,7 @@
 		<module>dm-clustering-dbscan</module>
 		<module>dm-clustering-commons</module>
 		<module>dm-clustering-tool</module>
+		<module>dm-clustering-kmeans</module>
 	</modules>
 	
 	<dependencies>
