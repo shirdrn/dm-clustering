@@ -84,18 +84,21 @@ public class EpsEstimator {
 				}
 				calculatorCount = calculators.size();
 				
+				// convert Point2D to KPoint2D
+				for(int i=0; i<allPoints.size(); i++) {
+					Point2D p = allPoints.get(i);
+					KPoint2D kp = new KPoint2D(p);
+					Collections.replaceAll(allPoints, p, kp);
+				}
 				// assign point tasks
 				for(int i=0; i<allPoints.size(); i++) {
 					while(true) {
 						KDistanceCalculator calculator = getCalculator();
-						Point2D p = allPoints.get(i);
-						KPoint2D kp = new KPoint2D(p);
-						Task task = new Task(kp, i);
-						allPoints.add(i, kp);
+						Task task = new Task((KPoint2D) allPoints.get(i), i);
 						if(!calculator.q.offer(task)) {
 							continue;
 						}
-						LOG.debug("Assign Point[" + task.p + "] to " + calculator);
+						LOG.debug("Assign Point[" + task.kp + "] to " + calculator);
 						break;
 					}
 				}
@@ -161,7 +164,7 @@ public class EpsEstimator {
 					try {
 						while(!q.isEmpty()) {
 							Task task = q.poll();
-							KPoint2D p1 = (KPoint2D) task.p;
+							KPoint2D p1 = (KPoint2D) task.kp;
 							final TreeSet<Double> sortedDistances = Sets.newTreeSet(new Comparator<Double>() {
 
 								@Override
@@ -179,7 +182,7 @@ public class EpsEstimator {
 							});
 							for (int i = 0; i < allPoints.size(); i++) {
 								if(task.pos != i) {
-									KPoint2D p2 = (KPoint2D) allPoints.get(i);
+									Point2D p2 = allPoints.get(i);
 									Set<Point2D> set = Sets.newHashSet((Point2D) p1, (Point2D) p2);
 									Double distance = distanceCache.getIfPresent(set);
 									if(distance == null) {
@@ -217,12 +220,12 @@ public class EpsEstimator {
 	
 	private class Task {
 		
-		private final Point2D p;
+		private final KPoint2D kp;
 		private final int pos;
 		
-		public Task(Point2D p, int pos) {
+		public Task(KPoint2D kp, int pos) {
 			super();
-			this.p = p;
+			this.kp = kp;
 			this.pos = pos;
 		}
 	}

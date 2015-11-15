@@ -253,22 +253,20 @@ public class DBSCANClustering implements Clustering {
 	public static void main(String[] args) {
 		// generate sorted k-distances sequences
 //		int minPts = 4;
+//		double eps = 0.0025094814205335555;
+//		double eps = 0.004417483559674606;
+//		double eps = 0.006147849217403014;
+		
 		int minPts = 8;
+//		double eps = 0.004900098978598581;
+		double eps = 0.009566439044911;
+//		double eps = 0.013621050253196359;
+		
 		DBSCANClustering c = new DBSCANClustering(minPts, 8);
 		c.getEpsEstimator().setOutputKDsitance(false);
 		c.generateSortedKDistances(new File("C:\\Users\\yanjun\\Desktop\\xy_zfmx.txt"));
 		
 		// execute clustering procedure
-//		double eps = 0.0025094814205335555;
-//		double eps = 0.004417483559674606;
-//		double eps = 0.006147849217403014;
-		
-		
-//		double eps = 0.004900098978598581;
-//		double eps = 0.009566439044911;
-		double eps = 0.013621050253196359;
-
-
 		c.setEps(eps);
 		c.setMinPts(4);
 		c.clustering();
