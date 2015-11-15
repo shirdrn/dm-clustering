@@ -1,8 +1,6 @@
 package org.shirdrn.dm.clustering.dbscan;
 
-import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileReader;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -28,6 +26,11 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 
+/**
+ * Estimate value of radius <code>Eps</code> for DBSCAN clustering algorithm.
+ *  
+ * @author yanjun
+ */
 public class EpsEstimator {
 
 	private static final Log LOG = LogFactory.getLog(EpsEstimator.class);
@@ -42,7 +45,7 @@ public class EpsEstimator {
 	private int calculatorCount = 5;
 	private int calculatorQueueSize = 200;
 	private volatile boolean completeToAssignTask = false;
-	private boolean isOutoutKDsitance = true;
+	private boolean isOutputKDsitance = true;
 	
 	public EpsEstimator() {
 		this(4, 5);
@@ -62,33 +65,14 @@ public class EpsEstimator {
 		return allPoints.iterator();
 	}
 	
-	public void setOutoutKDsitance(boolean isOutoutKDsitance) {
-		this.isOutoutKDsitance = isOutoutKDsitance;
+	public void setOutputKDsitance(boolean isOutputKDsitance) {
+		this.isOutputKDsitance = isOutputKDsitance;
 	}
 	
 	public EpsEstimator computeKDistance(File... files) {
 		// parse sample files
 		try {
-			BufferedReader reader = null;
-			for(File file : files) {
-				try {
-					reader = new BufferedReader(new FileReader(file.getAbsoluteFile()));
-					String point = null;
-					while((point = reader.readLine()) != null) {
-						String[] a = point.split("[\t,;\\s]+");
-						if(a.length == 2) {
-							KPoint2D kp = new KPoint2D(Double.parseDouble(a[0]), Double.parseDouble(a[1]));
-							if(!allPoints.contains(kp)) {
-								allPoints.add(kp);
-							}
-						}
-					}
-				} catch (Exception e1) {
-					e1.printStackTrace();
-				} finally {
-					FileUtils.closeQuietly(reader);
-				}
-			}
+			FileUtils.read2DPointsFromFiles(allPoints, "[\t,;\\s]+", files);
 			
 			// compute k-distance
 			try {
@@ -104,7 +88,10 @@ public class EpsEstimator {
 				for(int i=0; i<allPoints.size(); i++) {
 					while(true) {
 						KDistanceCalculator calculator = getCalculator();
-						Task task = new Task(allPoints.get(i), i);
+						Point2D p = allPoints.get(i);
+						KPoint2D kp = new KPoint2D(p);
+						Task task = new Task(kp, i);
+						allPoints.add(i, kp);
 						if(!calculator.q.offer(task)) {
 							continue;
 						}
@@ -145,7 +132,7 @@ public class EpsEstimator {
 			
 		});
 		
-		if(isOutoutKDsitance) {
+		if(isOutputKDsitance) {
 			for(int i=0; i<allPoints.size(); i++) {
 				KPoint2D kp = (KPoint2D) allPoints.get(i);
 				System.out.println(i + "\t" + kp.kDistance);
@@ -252,6 +239,10 @@ public class EpsEstimator {
 	private class KPoint2D extends Point2D {
 
 		private Double kDistance = 0.0;
+		
+		public KPoint2D(Point2D point) {
+			super(point.getX(), point.getY());
+		}
 		
 		public KPoint2D(Double x, Double y) {
 			super(x, y);

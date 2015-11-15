@@ -20,13 +20,18 @@ import org.shirdrn.dm.clustering.common.Point2D;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 
+/**
+ * DBSCAN clustering algorithm implementation.
+ * 
+ * @author yanjun
+ */
 public class DBSCANClustering implements Clustering {
 
 	private static final Log LOG = LogFactory.getLog(DBSCANClustering.class);
 	private double eps;
 	private int minPts;
 	private final EpsEstimator epsEstimator;
-	private final Map<Point2D, Set<Point2D>> corePointScopeSet = Maps.newHashMap();
+	private final Map<Point2D, Set<Point2D>> corePointWithNeighboursSet = Maps.newHashMap();
 	private final Map<Point2D, Set<Point2D>> clusteredPoints = Maps.newHashMap();
 	private final Set<Point2D> noisePoints = Sets.newHashSet();
 	private final CountDownLatch latch;
@@ -79,11 +84,11 @@ public class DBSCANClustering implements Clustering {
 			LOG.info("Shutdown executor service: " + executorService);
 			executorService.shutdown();
 		}
-		LOG.info("Point statistics: corePointSize=" + corePointScopeSet.keySet().size());
+		LOG.info("Point statistics: corePointSize=" + corePointWithNeighboursSet.keySet().size());
 		
 		// join connected core points
 		LOG.info("Joining connected core points ...");
-		Set<Point2D> corePoints = Sets.newHashSet(corePointScopeSet.keySet());
+		Set<Point2D> corePoints = Sets.newHashSet(corePointWithNeighboursSet.keySet());
 		while(true) {
 			Set<Point2D> set = Sets.newHashSet();
 			Iterator<Point2D> iter = corePoints.iterator();
@@ -108,10 +113,10 @@ public class DBSCANClustering implements Clustering {
 		Iterator<Point2D> iter = noisePoints.iterator();
 		while(iter.hasNext()) {
 			Point2D np = iter.next();
-			if(corePointScopeSet.containsKey(np)) {
+			if(corePointWithNeighboursSet.containsKey(np)) {
 				iter.remove();
 			} else {
-				for(Set<Point2D> set : corePointScopeSet.values()) {
+				for(Set<Point2D> set : corePointWithNeighboursSet.values()) {
 					if(set.contains(np)) {
 						iter.remove();
 						break;
@@ -166,10 +171,10 @@ public class DBSCANClustering implements Clustering {
 			Entry<Point2D, Set<Point2D>> core = coreIter.next();
 			Set<Point2D> set = Sets.newHashSet();
 			set.add(core.getKey());
-			set.addAll(corePointScopeSet.get(core.getKey()));
+			set.addAll(corePointWithNeighboursSet.get(core.getKey()));
 			for(Point2D p : core.getValue()) {
 				set.addAll(core.getValue());
-				set.addAll(corePointScopeSet.get(p));
+				set.addAll(corePointWithNeighboursSet.get(p));
 			}
 			for(Point2D p : set) {
 				System.out.println(p.getX() + "," + p.getY() + "," + id);
@@ -188,7 +193,7 @@ public class DBSCANClustering implements Clustering {
 	}
 	
 	/**
-	 * Compute core point and points in this scope
+	 * Compute core point and neighbourhood points.
 	 *
 	 * @author yanjun
 	 */
@@ -219,7 +224,7 @@ public class DBSCANClustering implements Clustering {
 						}
 						// decide whether p1 is core point
 						if(set.size() >= minPts) {
-							corePointScopeSet.put(p1, set);
+							corePointWithNeighboursSet.put(p1, set);
 							LOG.debug("Decide core point: point" + p1 + ", set=" + set);
 						} else {
 							// here, perhaps a point was wrongly put into noise point set
@@ -250,7 +255,7 @@ public class DBSCANClustering implements Clustering {
 //		int minPts = 4;
 		int minPts = 8;
 		DBSCANClustering c = new DBSCANClustering(minPts, 8);
-		c.getEpsEstimator().setOutoutKDsitance(false);
+		c.getEpsEstimator().setOutputKDsitance(false);
 		c.generateSortedKDistances(new File("C:\\Users\\yanjun\\Desktop\\xy_zfmx.txt"));
 		
 		// execute clustering procedure
