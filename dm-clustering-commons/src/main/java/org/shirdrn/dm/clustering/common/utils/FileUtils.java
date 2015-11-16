@@ -80,6 +80,35 @@ public class FileUtils {
 		}				
 	}
 	
+	public static void read2DPointsFromFile(final Map<Integer, Set<ClusterPoint2D>> points, String delimiterRegex, File pointFile) {
+		BufferedReader reader = null;
+		try {
+			// collect clustered points
+			reader = new BufferedReader(new FileReader(pointFile.getAbsoluteFile()));
+			String line;
+			while((line = reader.readLine()) != null) {
+				if(!line.trim().isEmpty()) {
+					String[] a = line.split("[,;\t\\s]+");
+					if(a.length == 3) {
+						int clusterId = Integer.parseInt(a[2]);
+						ClusterPoint2D clusterPoint = 
+								new ClusterPoint2D(Double.parseDouble(a[0]), Double.parseDouble(a[1]), clusterId);
+						Set<ClusterPoint2D> set = points.get(clusterId);
+						if(set == null) {
+							set = Sets.newHashSet();
+							points.put(clusterId, set);
+						}
+						set.add(clusterPoint);
+					}
+				}
+			}
+		} catch(Exception e) {
+			throw Throwables.propagate(e);
+		} finally {
+			FileUtils.closeQuietly(reader);
+		}				
+	}
+	
 	public static void closeQuietly(Closeable... closeables) {
 		if(closeables != null) {
 			for(Closeable closeable : closeables) {

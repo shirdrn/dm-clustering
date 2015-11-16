@@ -1,12 +1,11 @@
 package org.shirdrn.dm.clustering.kmeans;
 
-import java.util.Arrays;
-import java.util.Comparator;
+import java.io.File;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
@@ -21,6 +20,7 @@ import org.shirdrn.dm.clustering.common.NamedThreadFactory;
 import org.shirdrn.dm.clustering.common.Point2D;
 import org.shirdrn.dm.clustering.common.utils.FileUtils;
 import org.shirdrn.dm.clustering.common.utils.MetricUtils;
+import org.shirdrn.dm.clustering.kmeans.common.Centroid;
 import org.shirdrn.dm.clustering.kmeans.common.SelectInitialCentroidsPolicy;
 
 import com.google.common.collect.HashMultiset;
@@ -34,7 +34,7 @@ public class KMeansClustering extends AbstractClustering {
 
 	private static final Log LOG = LogFactory.getLog(KMeansClustering.class);
 	private int k;
-	private float clusterChangedPointRate;
+	private float maxMovingPointRate;
 	private final List<Point2D> allPoints = Lists.newArrayList();
 	private final SelectInitialCentroidsPolicy selectInitialCentroidsPolicy;
 	private final ExecutorService executorService;
@@ -44,21 +44,26 @@ public class KMeansClustering extends AbstractClustering {
 	private int calculatorQueueSize = 200;
 	private final List<CentroidCalculator> calculators = Lists.newArrayList();
 	private volatile boolean completeToAssignTask = false;
+	private volatile boolean clusteringCompletedFinally = false;
+	private final Object controllingSignal = new Object();
 	
-	public KMeansClustering(int k, float clusterChangedPointRate, int parallism) {
+	public KMeansClustering(int k, float maxMovingPointRate, int parallism) {
 		super();
 		this.k = k;
-		this.clusterChangedPointRate = clusterChangedPointRate;
+		this.maxMovingPointRate = maxMovingPointRate;
 		selectInitialCentroidsPolicy = new RandomlySelectInitialCentroidsPolicy();
 		latch = new CountDownLatch(parallism);
 		this.parallism = parallism;
 		executorService = Executors.newCachedThreadPool(new NamedThreadFactory("CENTROID"));
+		LOG.info("Init: k=" + k + ", maxMovingPointRate=" + maxMovingPointRate + ", parallism=" + parallism + 
+				", selectInitialCentroidsPolicy=" + selectInitialCentroidsPolicy.getClass().getName());
 	}
 	
 	@Override
 	public void clustering() {
 		// parse sample files
 		FileUtils.read2DPointsFromFiles(allPoints, "[\t,;\\s]+", inputFiles);
+		LOG.info("Total points: count=" + allPoints.size());
 		
 		// start centroid calculators
 		for (int i = 0; i < parallism; i++) {
@@ -68,79 +73,115 @@ public class KMeansClustering extends AbstractClustering {
 			LOG.info("Centroid calculator started: " + calculator);
 		}
 		
-		Set<Point2D> centroids = selectInitialCentroidsPolicy.select(k, allPoints);
+		// sort by centroid id ASC
+		TreeSet<Centroid> centroids = selectInitialCentroidsPolicy.select(k, allPoints);
+		LOG.info("Initial selected centroids: " + centroids);
+		
 		int round = 0;
 		CentroidSetWithClusteringPoints lastClusteringResult = null;
+		CentroidSetWithClusteringPoints currentClusteringResult = null;
 		int totalPointCount = allPoints.size();
-		float currentClusterChangedPointRate = 1.0f;
+		float currentClusterMovingPointRate = 1.0f;
 		try {
 			// enter clustering iteration procedure
-			while(currentClusterChangedPointRate > clusterChangedPointRate) {
+			while(currentClusterMovingPointRate > maxMovingPointRate) {
 				LOG.info("Start round: #" + (++round));
-				CentroidSetWithClusteringPoints currentClusteringResult = computeCentroids(centroids);
+				// signal calculators
+				notifyAllCalculators();
+				LOG.info("Notify all calculator to process tasks...");
+				
+				currentClusteringResult = computeCentroids(centroids);
+				LOG.info("Recomputed centroids: " + centroids);
+				
 				// compute centroid convergence status
-				int currentChangedPoints = 0;
+				int numMovingPoints = 0;
 				if(lastClusteringResult == null) {
 					lastClusteringResult = currentClusteringResult;
-					currentChangedPoints = totalPointCount;
-					reset();
-					continue;
+					numMovingPoints = totalPointCount;
 				} else {
 					// compare 2 round result for centroid computation
-					currentChangedPoints = analyzeChangedPoints(lastClusteringResult.clusteringPoints, currentClusteringResult.clusteringPoints);
+					numMovingPoints = analyzeMovingPoints(lastClusteringResult.clusteringPoints, currentClusteringResult.clusteringPoints);
 				}
-				reset();
 				centroids = currentClusteringResult.centroids;
-				currentClusterChangedPointRate = (float) currentChangedPoints / totalPointCount;
-				LOG.info("Finish round: #" + (round));
+				currentClusterMovingPointRate = (float) numMovingPoints / totalPointCount;
+				LOG.info("Clustering meta: k=" + k + 
+						", numMovingPoints=" + numMovingPoints + 
+						", totalPointCount=" + totalPointCount +
+						", currentClusterMovingPointRate=" + currentClusterMovingPointRate );
+				
+				// reset some structures
+				reset();
+				for(CentroidCalculator calculator : calculators) {
+					calculator.reset();
+				}
+				
+				LOG.info("Finish round: #" + round);
 			}
 		} finally {
+			// notify all calculators to exit normally
+			clusteringCompletedFinally = true;
+			LOG.info("Notify all calculators to exit normally...");
+			notifyAllCalculators();
+			
 			LOG.info("Shutdown executor service: " + executorService);
 			executorService.shutdown();
-		}
-	}
-
-	private int analyzeChangedPoints(Map<Point2D, Multiset<Point2D>> lastClusteringPoints,
-			Map<Point2D, Multiset<Point2D>> currentClusteringPoints) {
-		// Map<current, Map<last, intersected point count>>
-		Map<Multiset<Point2D>, Map<Multiset<Point2D>, Integer>> intersectedClusterPointCounts = Maps.newHashMap();
-		for(Multiset<Point2D> last : lastClusteringPoints.values()) {
-			for(Multiset<Point2D> current : currentClusteringPoints.values()) {
-				Map<Multiset<Point2D>, Integer> counts = intersectedClusterPointCounts.get(current);
-				if(counts == null) {
-					counts = Maps.newHashMap();
-					intersectedClusterPointCounts.put(current, counts);
-				}
-				counts.put(last, Multisets.intersection(last, current).size());
+			
+			// process final clustering result
+			LOG.info("Final clustering result: ");
+			Iterator<Entry<Centroid, Multiset<Point2D>>> iter = currentClusteringResult.clusteringPoints.entrySet().iterator();
+			int seqNo = 0;
+			while(iter.hasNext()) {
+				Entry<Centroid, Multiset<Point2D>> entry = iter.next();
+				System.out.println(seqNo + ". [" + entry.getKey() + "] " + entry.getValue().size());
 			}
 		}
 		
-		// compute changed points
-		// TODO greedy policy, and order dependent
-		Iterator<Entry<Multiset<Point2D>, Map<Multiset<Point2D>, Integer>>>  iter = intersectedClusterPointCounts.entrySet().iterator();
-		while(iter.hasNext()) {
-			Entry<Multiset<Point2D>, Map<Multiset<Point2D>, Integer>> entry = iter.next();
-			Multiset<Point2D> current = entry.getKey();
-			Map<Multiset<Point2D>, Integer> countMap = entry.getValue();
-			// sort map by DESC
-			Entry[] a = new Entry[countMap.size()];
-			a = countMap.entrySet().toArray(a);
-			Arrays.sort(a, new Comparator<Entry>() {
-
-				@Override
-				public int compare(Entry o1, Entry o2) {
-					Entry<Multiset<Point2D>, Integer> entry1 = (Entry<Multiset<Point2D>, Integer>) o1;
-					Entry<Multiset<Point2D>, Integer> entry2 = (Entry<Multiset<Point2D>, Integer>) o2;
-					return entry2.getValue() - entry1.getValue();
-				}
-				
-			});
-			
-		}
-		return 0;
+		// output clustering result
+		outputResult(currentClusteringResult.clusteringPoints);
 	}
 
-	private CentroidSetWithClusteringPoints computeCentroids(Set<Point2D> centroids) {
+	private void outputResult(TreeMap<Centroid, Multiset<Point2D>> clusterPoints) {
+		Iterator<Entry<Centroid, Multiset<Point2D>>> iter = clusterPoints.entrySet().iterator();
+		System.out.println(" == Cluster centroids == ");
+		while(iter.hasNext()) {
+			Entry<Centroid, Multiset<Point2D>> entry = iter.next();
+			Centroid c = entry.getKey();
+			System.out.println(c.getX() + "," + c.getY() + "," + c.getId());
+		}
+		
+		System.out.println(" == Cluster points == ");
+		iter = clusterPoints.entrySet().iterator();
+		while(iter.hasNext()) {
+			Entry<Centroid, Multiset<Point2D>> entry = iter.next();
+			for(Point2D p : entry.getValue()) {
+				System.out.println(p.getX() + "," + p.getY() + "," + entry.getKey().getId());
+			}
+		}
+	}
+
+	private void notifyAllCalculators() {
+		synchronized(controllingSignal) {
+			controllingSignal.notifyAll();
+		}
+	}
+
+	private int analyzeMovingPoints(TreeMap<Centroid, Multiset<Point2D>> lastClusteringPoints,
+			TreeMap<Centroid, Multiset<Point2D>> currentClusteringPoints) {
+		// Map<current, Map<last, intersected point count>>
+		Set<Point2D> movingPoints = Sets.newHashSet();
+		Iterator<Entry<Centroid, Multiset<Point2D>>> lastIter = lastClusteringPoints.entrySet().iterator();
+		Iterator<Entry<Centroid, Multiset<Point2D>>> currentIter = currentClusteringPoints.entrySet().iterator();
+		while(lastIter.hasNext() && currentIter.hasNext()) {
+			Entry<Centroid, Multiset<Point2D>> last = lastIter.next();
+			Entry<Centroid, Multiset<Point2D>> current = currentIter.next();
+			Multiset<Point2D> intersection = Multisets.intersection(last.getValue(), current.getValue());
+			movingPoints.addAll(Multisets.difference(last.getValue(), intersection));
+			movingPoints.addAll(Multisets.difference(current.getValue(), intersection));
+		}
+		return movingPoints.size();
+	}
+
+	private CentroidSetWithClusteringPoints computeCentroids(Set<Centroid> centroids) {
 		try {
 			for(Point2D p : allPoints) {
 				CentroidCalculator calculator = getCalculator();
@@ -156,9 +197,9 @@ public class KMeansClustering extends AbstractClustering {
 		}
 		
 		// merge clustered points, and group by centroid
-		Map<Point2D, Multiset<Point2D>> clusteringPoints = Maps.newHashMap();
+		TreeMap<Centroid, Multiset<Point2D>> clusteringPoints = Maps.newTreeMap();
 		for(CentroidCalculator calculator : calculators) {
-			for(Point2D centroid : calculator.localClusteredPoints.keySet()) {
+			for(Centroid centroid : calculator.localClusteredPoints.keySet()) {
 				Multiset<Point2D> globalPoints = clusteringPoints.get(centroid);
 				if(globalPoints == null) {
 					globalPoints = HashMultiset.create();
@@ -166,24 +207,25 @@ public class KMeansClustering extends AbstractClustering {
 				}
 				globalPoints.addAll(calculator.localClusteredPoints.get(centroid));
 			}
-			calculator.reset();
 		}
 		
 		// re-compute centroids
-		Set<Point2D> newCentroids = Sets.newHashSet();
-		Iterator<Entry<Point2D, Multiset<Point2D>>> iter = clusteringPoints.entrySet().iterator();
+		TreeSet<Centroid> newCentroids = Sets.newTreeSet();
+		Iterator<Entry<Centroid, Multiset<Point2D>>> iter = clusteringPoints.entrySet().iterator();
 		while(iter.hasNext()) {
-			newCentroids.add(MetricUtils.meanCentroid(iter.next().getValue()));
+			Entry<Centroid, Multiset<Point2D>> entry = iter.next();
+			Point2D point = MetricUtils.meanCentroid(entry.getValue());
+			newCentroids.add(new Centroid(entry.getKey().getId(), point));
 		}
 		return new CentroidSetWithClusteringPoints(newCentroids, clusteringPoints);
 	}
 	
 	private class CentroidSetWithClusteringPoints {
 		
-		private final Set<Point2D> centroids;
-		private final Map<Point2D, Multiset<Point2D>> clusteringPoints;
+		private final TreeSet<Centroid> centroids;
+		private final TreeMap<Centroid, Multiset<Point2D>> clusteringPoints;
 		
-		public CentroidSetWithClusteringPoints(Set<Point2D> centroids, Map<Point2D, Multiset<Point2D>> clusteringPoints) {
+		public CentroidSetWithClusteringPoints(TreeSet<Centroid> centroids, TreeMap<Centroid, Multiset<Point2D>> clusteringPoints) {
 			super();
 			this.centroids = centroids;
 			this.clusteringPoints = clusteringPoints;
@@ -206,8 +248,10 @@ public class KMeansClustering extends AbstractClustering {
 		private final Log LOG = LogFactory.getLog(CentroidCalculator.class);
 		private int round = 0;
 		private final BlockingQueue<Task> q;
-		// Map<centroid, points belonging to this centroid>
-		private Map<Point2D, Multiset<Point2D>> localClusteredPoints = Maps.newHashMap();
+		// TreeMap<centroid, points belonging to this centroid>
+		private TreeMap<Centroid, Multiset<Point2D>> localClusteredPoints = Maps.newTreeMap();
+		private int processedTasks;
+		private int accumulatedProcessedTasks;
 		
 		public CentroidCalculator(int qsize) {
 			q = new LinkedBlockingQueue<Task>(qsize);
@@ -215,55 +259,74 @@ public class KMeansClustering extends AbstractClustering {
 		
 		@Override
 		public void run() {
-			Map<Point2D, TreeSet<Distance>> distances = Maps.newHashMap();
+			while(!clusteringCompletedFinally) {
+				try {
+					process();
+					synchronized(controllingSignal) {
+						controllingSignal.wait();
+					}
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+			}
+			LOG.info("Received exit signal, exited. ");
+		}
+
+		private void process() {
 			try {
 				while(!completeToAssignTask) {
 					while(!q.isEmpty()) {
 						try {
-							Task task = q.take();
+							processedTasks++;
+							Task task = q.poll();
 							Point2D p1 = task.point;
-							TreeSet<Distance> distanceSet = distances.get(task.point);
-							if(distanceSet == null) {
-								// use default ASC sort order
-								distanceSet = Sets.newTreeSet();
-								distances.put(p1, distanceSet);
+							
+							// assign points to a nearest centroid
+							Distance minDistance = null;
+							for(Centroid centroid : task.centroids) {
+								double distance = MetricUtils.euclideanDistance(p1, centroid);
+								if(minDistance != null) {
+									if(distance < minDistance.distance) {
+										minDistance = new Distance(p1, centroid, distance);
+									}
+								} else {
+									minDistance = new Distance(p1, centroid, distance);
+								}
 							}
-							for(Point2D centroid : task.centroids) {
-								distanceSet.add(new Distance(p1, centroid, MetricUtils.euclideanDistance(p1, centroid)));
+							LOG.debug("Assign Point2D[" + p1 + "] to Centroid[" + minDistance.centroid + "]"); 
+							
+							Multiset<Point2D> pointsBelongingToCentroid = localClusteredPoints.get(minDistance.centroid);
+							if(pointsBelongingToCentroid == null) {
+								pointsBelongingToCentroid = HashMultiset.create();
+								localClusteredPoints.put(minDistance.centroid, pointsBelongingToCentroid);
 							}
+							pointsBelongingToCentroid.add(p1);
 						} catch (Exception e) {
 							e.printStackTrace();
 						}
 					}
 				}
 			} finally {
-				// assign points to a nearest centroid
-				for(Point2D p : distances.keySet()) {
-					Point2D centroidBelongedTo = distances.get(p).iterator().next().centroid;
-					Multiset<Point2D> pointsBelongingToCentroid = localClusteredPoints.get(centroidBelongedTo);
-					if(pointsBelongingToCentroid == null) {
-						pointsBelongingToCentroid = HashMultiset.create();
-					}
-					pointsBelongingToCentroid.add(centroidBelongedTo);
-				}
-				LOG.info("Calculator finished: round=" + (++round));
+				accumulatedProcessedTasks += processedTasks;
 				latch.countDown();
+				LOG.info("Calculator finished: round=" + (++round) + ", processedTasks=" + processedTasks + 
+						", accumulatedProcessedTasks=" + accumulatedProcessedTasks);
 			}
-			
 		}
 		
 		public void reset() {
 			localClusteredPoints = null;
-			localClusteredPoints = Maps.newHashMap();
+			localClusteredPoints = Maps.newTreeMap();
+			processedTasks = 0;
 		}
 	}
 	
 	private class Task {
 		
 		protected final Point2D point;
-		protected final Set<Point2D> centroids;
+		protected final Set<Centroid> centroids;
 		
-		public Task(Point2D point, Set<Point2D> centroids) {
+		public Task(Point2D point, Set<Centroid> centroids) {
 			super();
 			this.point = point;
 			this.centroids = centroids;
@@ -283,16 +346,17 @@ public class KMeansClustering extends AbstractClustering {
 	
 	private class Distance implements Comparable<Distance> {
 		
+		@SuppressWarnings("unused")
 		private final Point2D point;
-		private final Point2D centroid;
+		private final Centroid centroid;
 		private double distance = 0.0;
 		
-		public Distance(Point2D point, Point2D centroid) {
+		public Distance(Point2D point, Centroid centroid) {
 			this.point = point;
 			this.centroid = centroid;
 		}
 		
-		public Distance(Point2D point, Point2D centroid, double distance) {
+		public Distance(Point2D point, Centroid centroid, double distance) {
 			this(point, centroid);
 			this.distance = distance;
 		}
@@ -302,6 +366,15 @@ public class KMeansClustering extends AbstractClustering {
 			double diff = this.distance - o.distance;
 			return diff<0 ? -1 : (diff>0 ? 1 : 0);
 		}
+	}
+	
+	public static void main(String[] args) {
+		int k = 3;
+		float maxMovingPointRate = 0.15f;
+		int parallism = 5;
+		KMeansClustering c = new KMeansClustering(k, maxMovingPointRate, parallism);
+		c.setInputFiles(new File("C:\\Users\\yanjun\\Desktop\\xy_zfmx.txt"));
+		c.clustering();
 	}
 
 }

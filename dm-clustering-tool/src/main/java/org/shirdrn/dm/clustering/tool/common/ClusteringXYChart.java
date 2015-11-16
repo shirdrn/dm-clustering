@@ -3,16 +3,16 @@ package org.shirdrn.dm.clustering.tool.common;
 import java.io.File;
 
 /**
- * Interface to chart XY chart based on clustering result.
+ * Interface to draw XY chart based on clustering result.
  * 
  * @author yanjun
  */
 public interface ClusteringXYChart {
 
 	/**
-	 * Render XY chart from the given cluster point set.
+	 * Draw XY chart from the given cluster point set.
 	 */
-	void renderXYChart();
+	void drawXYChart();
 	
 	/**
 	 * after clustering, we should write generated cluster points to file <code>clusterPointFile</code>, 
@@ -20,11 +20,5 @@ public interface ClusteringXYChart {
 	 * @param clusterPointFile
 	 */
 	void setclusterPointFile(File clusterPointFile);
-	
-	/**
-	 * Sets noise point virtual cluster ID.
-	 * @param noisePointClusterId
-	 */
-	void setNoisePointClusterId(int noisePointClusterId);
 	
 }

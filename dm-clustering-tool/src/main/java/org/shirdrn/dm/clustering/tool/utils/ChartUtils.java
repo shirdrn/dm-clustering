@@ -113,7 +113,7 @@ public class ChartUtils {
 
             @Override
             public void run() {
-            	chart.renderXYChart();
+            	chart.drawXYChart();
             	JFrame frame = (JFrame) chart;
             	frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             	frame.pack();
