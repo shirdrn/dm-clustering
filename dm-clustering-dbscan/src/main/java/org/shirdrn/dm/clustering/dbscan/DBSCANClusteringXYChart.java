@@ -136,7 +136,7 @@ public class DBSCANClusteringXYChart extends JFrame implements ClusteringXYChart
 		double eps = 0.013621050253196359;
 		
 		String chartTitle = "DBSCAN [Eps=" + eps + ", MinPts=" + minPts + "]";
-		String dir = "C:\\Users\\yanjun\\Desktop";
+		String dir = FileUtils.getDataRootDir().getAbsolutePath();
 		File clusterPointFile = getClusterPointFile(args, dir, minPts, eps);
 		
 		final DBSCANClusteringXYChart chart = new DBSCANClusteringXYChart(chartTitle);

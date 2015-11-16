@@ -373,7 +373,8 @@ public class KMeansClustering extends AbstractClustering {
 		float maxMovingPointRate = 0.15f;
 		int parallism = 5;
 		KMeansClustering c = new KMeansClustering(k, maxMovingPointRate, parallism);
-		c.setInputFiles(new File("C:\\Users\\yanjun\\Desktop\\xy_zfmx.txt"));
+		File dir = FileUtils.getDataRootDir();
+		c.setInputFiles(new File(dir, "xy_zfmx.txt"));
 		c.clustering();
 	}
 

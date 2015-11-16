@@ -16,6 +16,11 @@ import com.google.common.collect.Sets;
 
 public class FileUtils {
 
+	
+	public static File getDataRootDir() {
+		return new File(System.getProperty("user.dir") + "\\src\\main\\data");
+	}
+	
 	/**
 	 * Read lines from files, and parse line to create {@link Point2D} types' objects.
 	 * @param points

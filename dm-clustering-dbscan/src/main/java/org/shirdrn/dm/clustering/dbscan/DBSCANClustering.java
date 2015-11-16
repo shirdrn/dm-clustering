@@ -16,6 +16,7 @@ import org.apache.commons.logging.LogFactory;
 import org.shirdrn.dm.clustering.common.AbstractClustering;
 import org.shirdrn.dm.clustering.common.NamedThreadFactory;
 import org.shirdrn.dm.clustering.common.Point2D;
+import org.shirdrn.dm.clustering.common.utils.FileUtils;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
@@ -258,7 +259,7 @@ public class DBSCANClustering extends AbstractClustering {
 //		double eps = 0.013621050253196359;
 		
 		DBSCANClustering c = new DBSCANClustering(minPts, 8);
-		c.setInputFiles(new File("C:\\Users\\yanjun\\Desktop\\xy_zfmx.txt"));
+		c.setInputFiles(new File(FileUtils.getDataRootDir(), "xy_zfmx.txt"));
 		c.getEpsEstimator().setOutputKDsitance(false);
 		c.generateSortedKDistances();
 		

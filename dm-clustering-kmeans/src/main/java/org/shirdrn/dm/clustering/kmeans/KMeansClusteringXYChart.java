@@ -137,9 +137,9 @@ public class KMeansClusteringXYChart extends JFrame implements ClusteringXYChart
 		int k = 3;
 		
 		String chartTitle = "K-means [k=" + k + "]";
-		String dir = "C:\\Users\\yanjun\\Desktop";
-		File centroidPointFile = new File(new File(dir), "kmeans_3_centroids.txt");
-		File clusterPointFile = new File(new File(dir), "kmeans_3_cluster_points.txt");
+		File dir = FileUtils.getDataRootDir();
+		File centroidPointFile = new File(dir, "kmeans_3_centroids.txt");
+		File clusterPointFile = new File(dir, "kmeans_3_cluster_points.txt");
 		
 		final KMeansClusteringXYChart chart = new KMeansClusteringXYChart(chartTitle);
 		chart.setclusterPointFile(clusterPointFile);
