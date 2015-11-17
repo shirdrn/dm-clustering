@@ -37,7 +37,7 @@ public class DBSCANClustering extends Clustering2D {
 	private double eps;
 	private int minPts;
 	private final EpsEstimator epsEstimator;
-	private final Map<Point2D, Set<Point2D>> corePointWithNeighboursSet = Maps.newHashMap();
+	private final Map<Point2D, Set<Point2D>> corePointWithNeighbours = Maps.newHashMap();
 	private final Set<Point2D> outliers = Sets.newHashSet();
 	private final CountDownLatch latch;
 	private final ExecutorService executorService;
@@ -88,12 +88,12 @@ public class DBSCANClustering extends Clustering2D {
 			LOG.info("Shutdown executor service: " + executorService);
 			executorService.shutdown();
 		}
-		LOG.info("Point statistics: corePointSize=" + corePointWithNeighboursSet.keySet().size());
+		LOG.info("Point statistics: corePointSize=" + corePointWithNeighbours.keySet().size());
 		
 		// join connected core points
 		LOG.info("Joining connected core points ...");
 		final Map<Point2D, Set<Point2D>> clusteringPoints = Maps.newHashMap();
-		Set<Point2D> corePoints = Sets.newHashSet(corePointWithNeighboursSet.keySet());
+		Set<Point2D> corePoints = Sets.newHashSet(corePointWithNeighbours.keySet());
 		while(true) {
 			Set<Point2D> set = Sets.newHashSet();
 			Iterator<Point2D> iter = corePoints.iterator();
@@ -117,10 +117,10 @@ public class DBSCANClustering extends Clustering2D {
 		Iterator<Point2D> iter = outliers.iterator();
 		while(iter.hasNext()) {
 			Point2D np = iter.next();
-			if(corePointWithNeighboursSet.containsKey(np)) {
+			if(corePointWithNeighbours.containsKey(np)) {
 				iter.remove();
 			} else {
-				for(Set<Point2D> set : corePointWithNeighboursSet.values()) {
+				for(Set<Point2D> set : corePointWithNeighbours.values()) {
 					if(set.contains(np)) {
 						iter.remove();
 						break;
@@ -136,10 +136,10 @@ public class DBSCANClustering extends Clustering2D {
 			Entry<Point2D, Set<Point2D>> core = coreIter.next();
 			Set<Point2D> set = Sets.newHashSet();
 			set.add(core.getKey());
-			set.addAll(corePointWithNeighboursSet.get(core.getKey()));
+			set.addAll(corePointWithNeighbours.get(core.getKey()));
 			for(Point2D p : core.getValue()) {
 				set.addAll(core.getValue());
-				set.addAll(corePointWithNeighboursSet.get(p));
+				set.addAll(corePointWithNeighbours.get(p));
 			}
 			
 			Set<ClusterPoint<Point2D>> clusterSet = Sets.newHashSet();
@@ -215,7 +215,7 @@ public class DBSCANClustering extends Clustering2D {
 						}
 						// decide whether p1 is core point
 						if(set.size() >= minPts) {
-							corePointWithNeighboursSet.put(p1, set);
+							corePointWithNeighbours.put(p1, set);
 							LOG.debug("Decide core point: point" + p1 + ", set=" + set);
 						} else {
 							// here, perhaps a point was wrongly put into outliers set
