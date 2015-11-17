@@ -1,24 +1,36 @@
 package org.shirdrn.dm.clustering.common;
 
 import java.io.File;
-import java.util.Map;
-import java.util.Set;
 
-import com.google.common.collect.Maps;
+public abstract class AbstractClustering<P> implements Clustering<P> {
 
-public abstract class AbstractClustering implements Clustering {
-
-	protected final Map<Point2D, Set<Point2D>> clusteredPoints = Maps.newHashMap();
 	protected File[] inputFiles;
+	protected final int parallism;
+	protected final ClusteringResult<P> clusteringResult;
+	
+	public AbstractClustering() {
+		this(1);
+	}
+	
+	public AbstractClustering(int parallism) {
+		super();
+		this.parallism = parallism;
+		this.clusteringResult = new GenericClusteringResult<P>();
+	}
 	
 	@Override
 	public int getClusteredCount() {
-		return clusteredPoints.size();
+		return clusteringResult.getClusteredPoints().size();
 	}
 	
 	@Override
 	public void setInputFiles(File... inputFiles) {
 		this.inputFiles = inputFiles;		
+	}
+	
+	@Override
+	public ClusteringResult<P> getClusteringResult() {
+		return clusteringResult;
 	}
 
 }

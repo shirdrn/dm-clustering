@@ -2,7 +2,7 @@ package org.shirdrn.dm.clustering.common;
 
 import java.io.File;
 
-public interface Clustering {
+public interface Clustering<P> {
 
 	void clustering();
 	
@@ -10,4 +10,5 @@ public interface Clustering {
 	
 	int getClusteredCount();
 	
+	ClusteringResult<P> getClusteringResult();
 }

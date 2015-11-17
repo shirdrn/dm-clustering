@@ -13,9 +13,13 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.shirdrn.dm.clustering.common.AbstractClustering;
+import org.shirdrn.dm.clustering.common.ClusterPoint;
+import org.shirdrn.dm.clustering.common.ClusterPoint2D;
+import org.shirdrn.dm.clustering.common.Clustering2D;
+import org.shirdrn.dm.clustering.common.ClusteringResult;
 import org.shirdrn.dm.clustering.common.NamedThreadFactory;
 import org.shirdrn.dm.clustering.common.Point2D;
+import org.shirdrn.dm.clustering.common.utils.ClusteringUtils;
 import org.shirdrn.dm.clustering.common.utils.FileUtils;
 
 import com.google.common.base.Preconditions;
@@ -27,7 +31,7 @@ import com.google.common.collect.Sets;
  * 
  * @author yanjun
  */
-public class DBSCANClustering extends AbstractClustering {
+public class DBSCANClustering extends Clustering2D {
 
 	private static final Log LOG = LogFactory.getLog(DBSCANClustering.class);
 	private double eps;
@@ -37,15 +41,13 @@ public class DBSCANClustering extends AbstractClustering {
 	private final Set<Point2D> noisePoints = Sets.newHashSet();
 	private final CountDownLatch latch;
 	private final ExecutorService executorService;
-	private final int parallism;
 	private final BlockingQueue<Point2D> taskQueue;
 	private volatile boolean completed = false;
 	private int clusterCount;
 	
 	public DBSCANClustering(int minPts, int parallism) {
-		super();
+		super(parallism);
 		this.minPts = minPts;
-		this.parallism = parallism;
 		epsEstimator = new EpsEstimator(minPts, parallism);
 		latch = new CountDownLatch(parallism);
 		executorService = Executors.newCachedThreadPool(new NamedThreadFactory("CORE"));
@@ -90,6 +92,7 @@ public class DBSCANClustering extends AbstractClustering {
 		
 		// join connected core points
 		LOG.info("Joining connected core points ...");
+		final Map<Point2D, Set<Point2D>> clusteringPoints = Maps.newHashMap();
 		Set<Point2D> corePoints = Sets.newHashSet(corePointWithNeighboursSet.keySet());
 		while(true) {
 			Set<Point2D> set = Sets.newHashSet();
@@ -103,7 +106,7 @@ public class DBSCANClustering extends AbstractClustering {
 					connectedPoints = joinConnectedCorePoints(connectedPoints, corePoints);
 					set.addAll(connectedPoints);
 				}
-				clusteredPoints.put(p, set);
+				clusteringPoints.put(p, set);
 			} else {
 				break;
 			}
@@ -126,9 +129,28 @@ public class DBSCANClustering extends AbstractClustering {
 			}
 		}
 		
-		LOG.info("Finished clustering: clusterCount=" + clusterCount + ", noisePointCount=" + noisePoints.size());
+		// generate clustering result
+		Iterator<Entry<Point2D, Set<Point2D>>> coreIter = clusteringPoints.entrySet().iterator();
+		int id = 0;
+		while(coreIter.hasNext()) {
+			Entry<Point2D, Set<Point2D>> core = coreIter.next();
+			Set<Point2D> set = Sets.newHashSet();
+			set.add(core.getKey());
+			set.addAll(corePointWithNeighboursSet.get(core.getKey()));
+			for(Point2D p : core.getValue()) {
+				set.addAll(core.getValue());
+				set.addAll(corePointWithNeighboursSet.get(p));
+			}
+			
+			Set<ClusterPoint<Point2D>> clusterSet = Sets.newHashSet();
+			for(Point2D p : set) {
+				clusterSet.add(new ClusterPoint2D(p, id));
+			}
+			clusteredPoints.put(id, clusterSet);
+			++id;
+		}
 		
-		displayClusters();
+		LOG.info("Finished clustering: clusterCount=" + clusterCount + ", noisePointCount=" + noisePoints.size());
 	}
 	
 	private Set<Point2D> joinConnectedCorePoints(Set<Point2D> connectedPoints, Set<Point2D> leftCorePoints) {
@@ -157,33 +179,6 @@ public class DBSCANClustering extends AbstractClustering {
 		this.minPts = minPts;
 	}
 
-	private void displayClusters() {
-		// display noise points
-		int noiseClusterId = -1;
-		for(Point2D p : noisePoints) {
-			System.out.println(p.getX() + "," + p.getY() + "," + noiseClusterId);
-		}
-		
-		// display core points
-		Iterator<Entry<Point2D, Set<Point2D>>> coreIter = clusteredPoints.entrySet().iterator();
-		int id = 0;
-		while(coreIter.hasNext()) {
-			++id;
-			Entry<Point2D, Set<Point2D>> core = coreIter.next();
-			Set<Point2D> set = Sets.newHashSet();
-			set.add(core.getKey());
-			set.addAll(corePointWithNeighboursSet.get(core.getKey()));
-			for(Point2D p : core.getValue()) {
-				set.addAll(core.getValue());
-				set.addAll(corePointWithNeighboursSet.get(p));
-			}
-			for(Point2D p : set) {
-				System.out.println(p.getX() + "," + p.getY() + "," + id);
-			}
-		}
-		
-	}
-	
 	public void setEps(double eps) {
 		this.eps = eps;
 	}
@@ -246,6 +241,10 @@ public class DBSCANClustering extends AbstractClustering {
 		return epsEstimator;
 	}
 	
+	public Set<Point2D> getNoisePoints() {
+		return noisePoints;
+	}
+	
 	public static void main(String[] args) {
 		// generate sorted k-distances sequences
 //		int minPts = 4;
@@ -267,6 +266,17 @@ public class DBSCANClustering extends AbstractClustering {
 		c.setEps(eps);
 		c.setMinPts(4);
 		c.clustering();
+		
+		System.out.println("== Clustered points ==");
+		ClusteringResult<Point2D> result = c.getClusteringResult();
+		ClusteringUtils.print2DClusterPoints(result.getClusteredPoints());
+		
+		// print noise points
+		int noiseClusterId = -1;
+		System.out.println("== Noise points ==");
+		for(Point2D p : c.getNoisePoints()) {
+			System.out.println(p.getX() + "," + p.getY() + "," + noiseClusterId);
+		}
 	}
 
 }

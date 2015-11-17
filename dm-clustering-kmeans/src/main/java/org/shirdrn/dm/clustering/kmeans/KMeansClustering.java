@@ -15,9 +15,13 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.shirdrn.dm.clustering.common.AbstractClustering;
+import org.shirdrn.dm.clustering.common.ClusterPoint;
+import org.shirdrn.dm.clustering.common.ClusterPoint2D;
+import org.shirdrn.dm.clustering.common.Clustering2D;
+import org.shirdrn.dm.clustering.common.ClusteringResult;
 import org.shirdrn.dm.clustering.common.NamedThreadFactory;
 import org.shirdrn.dm.clustering.common.Point2D;
+import org.shirdrn.dm.clustering.common.utils.ClusteringUtils;
 import org.shirdrn.dm.clustering.common.utils.FileUtils;
 import org.shirdrn.dm.clustering.common.utils.MetricUtils;
 import org.shirdrn.dm.clustering.kmeans.common.Centroid;
@@ -30,7 +34,7 @@ import com.google.common.collect.Multiset;
 import com.google.common.collect.Multisets;
 import com.google.common.collect.Sets;
 
-public class KMeansClustering extends AbstractClustering {
+public class KMeansClustering extends Clustering2D {
 
 	private static final Log LOG = LogFactory.getLog(KMeansClustering.class);
 	private int k;
@@ -38,8 +42,8 @@ public class KMeansClustering extends AbstractClustering {
 	private final List<Point2D> allPoints = Lists.newArrayList();
 	private final SelectInitialCentroidsPolicy selectInitialCentroidsPolicy;
 	private final ExecutorService executorService;
+	private Set<Centroid> centroidSet; 
 	private CountDownLatch latch;
-	private final int parallism;
 	private int taskIndex = 0;
 	private int calculatorQueueSize = 200;
 	private final List<CentroidCalculator> calculators = Lists.newArrayList();
@@ -48,12 +52,11 @@ public class KMeansClustering extends AbstractClustering {
 	private final Object controllingSignal = new Object();
 	
 	public KMeansClustering(int k, float maxMovingPointRate, int parallism) {
-		super();
+		super(parallism);
 		this.k = k;
 		this.maxMovingPointRate = maxMovingPointRate;
 		selectInitialCentroidsPolicy = new RandomlySelectInitialCentroidsPolicy();
 		latch = new CountDownLatch(parallism);
-		this.parallism = parallism;
 		executorService = Executors.newCachedThreadPool(new NamedThreadFactory("CENTROID"));
 		LOG.info("Init: k=" + k + ", maxMovingPointRate=" + maxMovingPointRate + ", parallism=" + parallism + 
 				", selectInitialCentroidsPolicy=" + selectInitialCentroidsPolicy.getClass().getName());
@@ -77,7 +80,7 @@ public class KMeansClustering extends AbstractClustering {
 		TreeSet<Centroid> centroids = selectInitialCentroidsPolicy.select(k, allPoints);
 		LOG.info("Initial selected centroids: " + centroids);
 		
-		int round = 0;
+		int iterations = 0;
 		CentroidSetWithClusteringPoints lastClusteringResult = null;
 		CentroidSetWithClusteringPoints currentClusteringResult = null;
 		int totalPointCount = allPoints.size();
@@ -85,9 +88,9 @@ public class KMeansClustering extends AbstractClustering {
 		try {
 			// enter clustering iteration procedure
 			while(currentClusterMovingPointRate > maxMovingPointRate) {
-				LOG.info("Start round: #" + (++round));
+				LOG.info("Start iterate: #" + (++iterations));
 				// signal calculators
-				notifyAllCalculators();
+				notifyAllCalculators(0);
 				LOG.info("Notify all calculator to process tasks...");
 				
 				currentClusteringResult = computeCentroids(centroids);
@@ -99,7 +102,7 @@ public class KMeansClustering extends AbstractClustering {
 					lastClusteringResult = currentClusteringResult;
 					numMovingPoints = totalPointCount;
 				} else {
-					// compare 2 round result for centroid computation
+					// compare 2 iterations' result for centroid computation
 					numMovingPoints = analyzeMovingPoints(lastClusteringResult.clusteringPoints, currentClusteringResult.clusteringPoints);
 				}
 				centroids = currentClusteringResult.centroids;
@@ -115,13 +118,13 @@ public class KMeansClustering extends AbstractClustering {
 					calculator.reset();
 				}
 				
-				LOG.info("Finish round: #" + round);
+				LOG.info("Finish iterate: #" + iterations);
 			}
 		} finally {
 			// notify all calculators to exit normally
 			clusteringCompletedFinally = true;
 			LOG.info("Notify all calculators to exit normally...");
-			notifyAllCalculators();
+			notifyAllCalculators(500);
 			
 			LOG.info("Shutdown executor service: " + executorService);
 			executorService.shutdown();
@@ -129,39 +132,30 @@ public class KMeansClustering extends AbstractClustering {
 			// process final clustering result
 			LOG.info("Final clustering result: ");
 			Iterator<Entry<Centroid, Multiset<Point2D>>> iter = currentClusteringResult.clusteringPoints.entrySet().iterator();
-			int seqNo = 0;
 			while(iter.hasNext()) {
 				Entry<Centroid, Multiset<Point2D>> entry = iter.next();
-				System.out.println(seqNo + ". [" + entry.getKey() + "] " + entry.getValue().size());
+				int id = entry.getKey().getId();
+				Set<ClusterPoint<Point2D>> set = Sets.newHashSet();
+				for(Point2D p : entry.getValue()) {
+					set.add(new ClusterPoint2D(p, id));
+				}
+				clusteredPoints.put(id, set);
+				id++;
 			}
-		}
-		
-		// output clustering result
-		outputResult(currentClusteringResult.clusteringPoints);
-	}
-
-	private void outputResult(TreeMap<Centroid, Multiset<Point2D>> clusterPoints) {
-		Iterator<Entry<Centroid, Multiset<Point2D>>> iter = clusterPoints.entrySet().iterator();
-		System.out.println(" == Cluster centroids == ");
-		while(iter.hasNext()) {
-			Entry<Centroid, Multiset<Point2D>> entry = iter.next();
-			Centroid c = entry.getKey();
-			System.out.println(c.getX() + "," + c.getY() + "," + c.getId());
-		}
-		
-		System.out.println(" == Cluster points == ");
-		iter = clusterPoints.entrySet().iterator();
-		while(iter.hasNext()) {
-			Entry<Centroid, Multiset<Point2D>> entry = iter.next();
-			for(Point2D p : entry.getValue()) {
-				System.out.println(p.getX() + "," + p.getY() + "," + entry.getKey().getId());
-			}
+			centroidSet = currentClusteringResult.clusteringPoints.keySet();
 		}
 	}
 
-	private void notifyAllCalculators() {
+	private void notifyAllCalculators(int waitMillisecs) {
 		synchronized(controllingSignal) {
 			controllingSignal.notifyAll();
+		}
+		if(waitMillisecs > 0) {
+			try {
+				Thread.sleep(waitMillisecs);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
 		}
 	}
 
@@ -246,7 +240,7 @@ public class KMeansClustering extends AbstractClustering {
 	private final class CentroidCalculator implements Runnable {
 		
 		private final Log LOG = LogFactory.getLog(CentroidCalculator.class);
-		private int round = 0;
+		private int localIterations = 0;
 		private final BlockingQueue<Task> q;
 		// TreeMap<centroid, points belonging to this centroid>
 		private TreeMap<Centroid, Multiset<Point2D>> localClusteredPoints = Maps.newTreeMap();
@@ -309,7 +303,7 @@ public class KMeansClustering extends AbstractClustering {
 			} finally {
 				accumulatedProcessedTasks += processedTasks;
 				latch.countDown();
-				LOG.info("Calculator finished: round=" + (++round) + ", processedTasks=" + processedTasks + 
+				LOG.info("Calculator finished: iteration=" + (++localIterations) + ", processedTasks=" + processedTasks + 
 						", accumulatedProcessedTasks=" + accumulatedProcessedTasks);
 			}
 		}
@@ -368,6 +362,10 @@ public class KMeansClustering extends AbstractClustering {
 		}
 	}
 	
+	public Set<Centroid> getCentroidSet() {
+		return centroidSet;
+	}
+	
 	public static void main(String[] args) {
 		int k = 3;
 		float maxMovingPointRate = 0.15f;
@@ -376,6 +374,16 @@ public class KMeansClustering extends AbstractClustering {
 		File dir = FileUtils.getDataRootDir();
 		c.setInputFiles(new File(dir, "xy_zfmx.txt"));
 		c.clustering();
+		
+		System.out.println("== Clustered points ==");
+		ClusteringResult<Point2D> result = c.getClusteringResult();
+		ClusteringUtils.print2DClusterPoints(result.getClusteredPoints());
+		
+		// print centroids
+		System.out.println("== Centroid points ==");
+		for(Centroid p : c.getCentroidSet()) {
+			System.out.println(p.getX() + "," + p.getY() + "," + p.getId());
+		}
 	}
 
 }

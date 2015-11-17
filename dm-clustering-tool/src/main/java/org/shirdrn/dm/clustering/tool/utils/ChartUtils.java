@@ -41,8 +41,8 @@ public class ChartUtils {
 			int clusterId = entry.getKey();
 			Set<ClusterPoint2D> clusteredPoints = entry.getValue();
 			XYSeries xySeries = new XYSeries(clusterId);
-			for(ClusterPoint2D p : clusteredPoints) {
-				xySeries.add(p.getX(), p.getY());
+			for(ClusterPoint2D cp : clusteredPoints) {
+				xySeries.add(cp.getPoint().getX(), cp.getPoint().getY());
 			}
 			xySeriesCollection.addSeries(xySeries);
 		}
@@ -132,8 +132,8 @@ public class ChartUtils {
 			@Override
             public void actionPerformed(ActionEvent e) {
 				if(xySeries.isEmpty()) {
-					for(ClusterPoint2D p : points) {
-						xySeries.add(p.getX(), p.getY());
+					for(ClusterPoint2D cp : points) {
+						xySeries.add(cp.getPoint().getX(), cp.getPoint().getY());
 					}
 				}
             }
