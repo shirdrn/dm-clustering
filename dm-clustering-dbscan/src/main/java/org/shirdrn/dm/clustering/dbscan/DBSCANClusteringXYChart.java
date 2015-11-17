@@ -50,9 +50,9 @@ public class DBSCANClusteringXYChart extends JFrame implements ClusteringXYChart
 	private File clusterPointFile;
 	private Map<Integer, Set<ClusterPoint2D>> clusterPoints = Maps.newHashMap();
 	private final List<Color> colorSpace = Lists.newArrayList();
-	private final Set<ClusterPoint2D> noisePoints = Sets.newHashSet();
-	private int noisePointClusterId;
-	private XYSeries noiseXYSeries;
+	private final Set<ClusterPoint2D> outliers = Sets.newHashSet();
+	private int outlierClusterId;
+	private XYSeries outlierXYSeries;
 	
 	public DBSCANClusteringXYChart(String chartTitle) throws HeadlessException {
 		super();
@@ -60,7 +60,7 @@ public class DBSCANClusteringXYChart extends JFrame implements ClusteringXYChart
 	}
 	
 	private XYSeriesCollection buildXYDataset() {
-		FileUtils.read2DClusterPointsFromFile(clusterPoints, noisePoints, "[\t,;\\s]+", clusterPointFile);
+		FileUtils.read2DClusterPointsFromFile(clusterPoints, outliers, "[\t,;\\s]+", clusterPointFile);
 		return ChartUtils.createXYSeriesCollection(clusterPoints);
 	}
 
@@ -68,8 +68,8 @@ public class DBSCANClusteringXYChart extends JFrame implements ClusteringXYChart
 	public void drawXYChart() {
 		// create xy dataset from points file
 		final XYSeriesCollection xyDataset = buildXYDataset();
-		noiseXYSeries = new XYSeries(noisePointClusterId);
-		xyDataset.addSeries(noiseXYSeries);
+		outlierXYSeries = new XYSeries(outlierClusterId);
+		xyDataset.addSeries(outlierXYSeries);
 		
 		// create chart & configure xy plot
 		JFreeChart jfreechart = ChartFactory.createScatterPlot(null, "X", "Y", xyDataset, PlotOrientation.VERTICAL, true, true, false);
@@ -91,8 +91,8 @@ public class DBSCANClusteringXYChart extends JFrame implements ClusteringXYChart
 			renderer.setSeriesPaint(entry.getKey(), entry.getValue());
 		}
 		
-		// render noise series
-		renderer.setSeriesPaint(noisePointClusterId, Color.RED);
+		// render outlier series
+		renderer.setSeriesPaint(outlierClusterId, Color.RED);
 		
 		NumberAxis domain = (NumberAxis) xyPlot.getDomainAxis();
 		domain.setVerticalTickLabels(true);
@@ -103,13 +103,13 @@ public class DBSCANClusteringXYChart extends JFrame implements ClusteringXYChart
 		JPanel panel = new JPanel();
 		panel.setBorder(BorderFactory.createLineBorder(Color.BLACK, 1, false));
         
-        // display/hide noise points
-		ChartUtils.createToggledButtons(panel, noiseXYSeries, noisePoints, "Display Noise Points", "Hide Noise Points");
+        // display/hide outliers
+		ChartUtils.createToggledButtons(panel, outlierXYSeries, outliers, "Display Outliers", "Hide Outliers");
         this.add(panel, BorderLayout.SOUTH);
 	}
 	
-	public void setNoisePointClusterId(int noisePointCluterId) {
-		this.noisePointClusterId = noisePointCluterId;
+	public void setOutlierClusterId(int outlierCluterId) {
+		this.outlierClusterId = outlierCluterId;
 	}
 
 	@Override
@@ -141,7 +141,7 @@ public class DBSCANClusteringXYChart extends JFrame implements ClusteringXYChart
 		
 		final DBSCANClusteringXYChart chart = new DBSCANClusteringXYChart(chartTitle);
 		chart.setclusterPointFile(clusterPointFile);
-		chart.setNoisePointClusterId(9999);
+		chart.setOutlierClusterId(9999);
         ChartUtils.generateXYChart(chart);
     }
 

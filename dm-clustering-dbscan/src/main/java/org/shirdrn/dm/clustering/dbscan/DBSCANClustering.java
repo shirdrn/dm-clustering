@@ -38,7 +38,7 @@ public class DBSCANClustering extends Clustering2D {
 	private int minPts;
 	private final EpsEstimator epsEstimator;
 	private final Map<Point2D, Set<Point2D>> corePointWithNeighboursSet = Maps.newHashMap();
-	private final Set<Point2D> noisePoints = Sets.newHashSet();
+	private final Set<Point2D> outliers = Sets.newHashSet();
 	private final CountDownLatch latch;
 	private final ExecutorService executorService;
 	private final BlockingQueue<Point2D> taskQueue;
@@ -113,8 +113,8 @@ public class DBSCANClustering extends Clustering2D {
 		}
 		LOG.info("Connected core points computed.");
 		
-		// process noise points
-		Iterator<Point2D> iter = noisePoints.iterator();
+		// process outliers
+		Iterator<Point2D> iter = outliers.iterator();
 		while(iter.hasNext()) {
 			Point2D np = iter.next();
 			if(corePointWithNeighboursSet.containsKey(np)) {
@@ -150,7 +150,7 @@ public class DBSCANClustering extends Clustering2D {
 			++id;
 		}
 		
-		LOG.info("Finished clustering: clusterCount=" + clusterCount + ", noisePointCount=" + noisePoints.size());
+		LOG.info("Finished clustering: clusterCount=" + clusterCount + ", outliersCount=" + outliers.size());
 	}
 	
 	private Set<Point2D> joinConnectedCorePoints(Set<Point2D> connectedPoints, Set<Point2D> leftCorePoints) {
@@ -218,10 +218,10 @@ public class DBSCANClustering extends Clustering2D {
 							corePointWithNeighboursSet.put(p1, set);
 							LOG.debug("Decide core point: point" + p1 + ", set=" + set);
 						} else {
-							// here, perhaps a point was wrongly put into noise point set
-							// afterwards we should remedy noise point set
-							if(!noisePoints.contains(p1)) {
-								noisePoints.add(p1);
+							// here, perhaps a point was wrongly put into outliers set
+							// afterwards we should remedy outliers set
+							if(!outliers.contains(p1)) {
+								outliers.add(p1);
 							}
 						}
 					} else {
@@ -241,8 +241,8 @@ public class DBSCANClustering extends Clustering2D {
 		return epsEstimator;
 	}
 	
-	public Set<Point2D> getNoisePoints() {
-		return noisePoints;
+	public Set<Point2D> getOutliers() {
+		return outliers;
 	}
 	
 	public static void main(String[] args) {
@@ -271,11 +271,11 @@ public class DBSCANClustering extends Clustering2D {
 		ClusteringResult<Point2D> result = c.getClusteringResult();
 		ClusteringUtils.print2DClusterPoints(result.getClusteredPoints());
 		
-		// print noise points
-		int noiseClusterId = -1;
-		System.out.println("== Noise points ==");
-		for(Point2D p : c.getNoisePoints()) {
-			System.out.println(p.getX() + "," + p.getY() + "," + noiseClusterId);
+		// print outliers
+		int outliersClusterId = -1;
+		System.out.println("== Outliers ==");
+		for(Point2D p : c.getOutliers()) {
+			System.out.println(p.getX() + "," + p.getY() + "," + outliersClusterId);
 		}
 	}
 
