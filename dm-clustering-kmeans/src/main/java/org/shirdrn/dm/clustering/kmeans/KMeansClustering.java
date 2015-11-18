@@ -1,6 +1,7 @@
 package org.shirdrn.dm.clustering.kmeans;
 
 import java.io.File;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map.Entry;
@@ -68,11 +69,20 @@ public class KMeansClustering extends Clustering2D {
 				", selectInitialCentroidsPolicy=" + selectInitialCentroidsPolicy.getClass().getName());
 	}
 	
+	public void initialize(Collection<Point2D> points) {
+		if(points == null) {
+			// parse sample files
+			FileUtils.read2DPointsFromFiles(allPoints, "[\t,;\\s]+", inputFiles);
+			LOG.info("Total points: count=" + allPoints.size());
+		} else {
+			allPoints.addAll(points);
+		}
+	}
+	
 	@Override
 	public void clustering() {
-		// parse sample files
-		FileUtils.read2DPointsFromFiles(allPoints, "[\t,;\\s]+", inputFiles);
-		LOG.info("Total points: count=" + allPoints.size());
+		// initialize to put points into memory 
+		initialize(null);
 		
 		// start centroid calculators
 		for (int i = 0; i < parallism; i++) {
@@ -334,6 +344,7 @@ public class KMeansClustering extends Clustering2D {
 			localClusteredPoints = null;
 			localClusteredPoints = Maps.newTreeMap();
 			processedTasks = 0;
+			localIterations = 0;
 		}
 	}
 	

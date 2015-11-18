@@ -8,7 +8,7 @@ import com.google.common.collect.Maps;
 
 public abstract class Clustering2D extends AbstractClustering<Point2D> {
 
-	protected final Map<Integer, Set<ClusterPoint<Point2D>>> clusteredPoints = Maps.newHashMap();
+	protected final Map<Integer, Set<ClusterPoint<Point2D>>> clusteredPoints = Maps.newTreeMap();
 	
 	public Clustering2D() {
 		this(1);
