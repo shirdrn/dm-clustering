@@ -47,6 +47,7 @@ public class DBSCANClustering extends Clustering2D {
 	
 	public DBSCANClustering(int minPts, int parallism) {
 		super(parallism);
+		Preconditions.checkArgument(minPts > 0, "Required: minPts > 0!");
 		this.minPts = minPts;
 		epsEstimator = new EpsEstimator(minPts, parallism);
 		latch = new CountDownLatch(parallism);
@@ -197,9 +198,9 @@ public class DBSCANClustering extends Clustering2D {
 		public void run() {
 			try {
 				Thread.sleep(1000);
-				while(!completed || !taskQueue.isEmpty()) {
-					Point2D p1 = taskQueue.poll();
-					if(p1 != null) {
+				while(true) {
+					while(!taskQueue.isEmpty()) {
+						Point2D p1 = taskQueue.poll();
 						++processedPoints;
 						Set<Point2D> set = Sets.newHashSet();
 						Iterator<Point2D> iter = epsEstimator.allPointIterator();
@@ -224,8 +225,13 @@ public class DBSCANClustering extends Clustering2D {
 								outliers.add(p1);
 							}
 						}
-					} else {
-						Thread.sleep(50);
+						
+					}
+					
+					Thread.sleep(100);
+					
+					if(taskQueue.isEmpty() && completed) {
+						break;
 					}
 				}
 			} catch (Exception e) {

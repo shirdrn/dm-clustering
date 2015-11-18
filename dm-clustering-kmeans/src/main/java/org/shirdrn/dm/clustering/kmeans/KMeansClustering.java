@@ -27,6 +27,7 @@ import org.shirdrn.dm.clustering.common.utils.MetricUtils;
 import org.shirdrn.dm.clustering.kmeans.common.Centroid;
 import org.shirdrn.dm.clustering.kmeans.common.SelectInitialCentroidsPolicy;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.HashMultiset;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -39,6 +40,7 @@ public class KMeansClustering extends Clustering2D {
 	private static final Log LOG = LogFactory.getLog(KMeansClustering.class);
 	private int k;
 	private float maxMovingPointRate;
+	private final int maxIterations;
 	private final List<Point2D> allPoints = Lists.newArrayList();
 	private final SelectInitialCentroidsPolicy selectInitialCentroidsPolicy;
 	private final ExecutorService executorService;
@@ -51,10 +53,14 @@ public class KMeansClustering extends Clustering2D {
 	private volatile boolean clusteringCompletedFinally = false;
 	private final Object controllingSignal = new Object();
 	
-	public KMeansClustering(int k, float maxMovingPointRate, int parallism) {
+	public KMeansClustering(int k, float maxMovingPointRate, int maxIterations, int parallism) {
 		super(parallism);
+		Preconditions.checkArgument(k > 0, "Required: k > 0!");
+		Preconditions.checkArgument(maxMovingPointRate >= 0 && maxMovingPointRate <= 1, "Required: maxMovingPointRate >= 0 && maxMovingPointRate <= 1!");
+		Preconditions.checkArgument(maxIterations > 0, "Required: maxIterations > 0!");
 		this.k = k;
 		this.maxMovingPointRate = maxMovingPointRate;
+		this.maxIterations = maxIterations;
 		selectInitialCentroidsPolicy = new RandomlySelectInitialCentroidsPolicy();
 		latch = new CountDownLatch(parallism);
 		executorService = Executors.newCachedThreadPool(new NamedThreadFactory("CENTROID"));
@@ -81,35 +87,47 @@ public class KMeansClustering extends Clustering2D {
 		LOG.info("Initial selected centroids: " + centroids);
 		
 		int iterations = 0;
+		boolean stopped = false;
 		CentroidSetWithClusteringPoints lastClusteringResult = null;
 		CentroidSetWithClusteringPoints currentClusteringResult = null;
 		int totalPointCount = allPoints.size();
 		float currentClusterMovingPointRate = 1.0f;
 		try {
 			// enter clustering iteration procedure
-			while(currentClusterMovingPointRate > maxMovingPointRate) {
+			while(currentClusterMovingPointRate > maxMovingPointRate 
+					&& !stopped 
+					&& iterations < maxIterations) {
 				LOG.info("Start iterate: #" + (++iterations));
 				// signal calculators
 				notifyAllCalculators(0);
 				LOG.info("Notify all calculator to process tasks...");
 				
 				currentClusteringResult = computeCentroids(centroids);
-				LOG.info("Recomputed centroids: " + centroids);
+				LOG.info("Re-computed centroids: " + centroids);
 				
 				// compute centroid convergence status
 				int numMovingPoints = 0;
 				if(lastClusteringResult == null) {
-					lastClusteringResult = currentClusteringResult;
 					numMovingPoints = totalPointCount;
 				} else {
 					// compare 2 iterations' result for centroid computation
 					numMovingPoints = analyzeMovingPoints(lastClusteringResult.clusteringPoints, currentClusteringResult.clusteringPoints);
+					
+					// check iteration stop condition
+					boolean isIdentical = (currentClusteringResult.centroids.size() ==
+							Multisets.intersection(HashMultiset.create(lastClusteringResult.centroids), HashMultiset.create(currentClusteringResult.centroids)).size());
+					if(iterations > 1 && isIdentical) {
+						stopped = true;
+					}
 				}
+				lastClusteringResult = currentClusteringResult;
 				centroids = currentClusteringResult.centroids;
 				currentClusterMovingPointRate = (float) numMovingPoints / totalPointCount;
+				
 				LOG.info("Clustering meta: k=" + k + 
 						", numMovingPoints=" + numMovingPoints + 
 						", totalPointCount=" + totalPointCount +
+						", stopped=" + stopped +
 						", currentClusterMovingPointRate=" + currentClusterMovingPointRate );
 				
 				// reset some structures
@@ -268,7 +286,7 @@ public class KMeansClustering extends Clustering2D {
 
 		private void process() {
 			try {
-				while(!completeToAssignTask) {
+				while(!q.isEmpty() || !completeToAssignTask) {
 					while(!q.isEmpty()) {
 						try {
 							processedTasks++;
@@ -299,6 +317,10 @@ public class KMeansClustering extends Clustering2D {
 							e.printStackTrace();
 						}
 					}
+					
+					try {
+						Thread.sleep(100);
+					} catch (InterruptedException e) { }
 				}
 			} finally {
 				accumulatedProcessedTasks += processedTasks;
@@ -367,10 +389,11 @@ public class KMeansClustering extends Clustering2D {
 	}
 	
 	public static void main(String[] args) {
-		int k = 3;
-		float maxMovingPointRate = 0.15f;
+		int k = 10;
+		float maxMovingPointRate = 0.01f;
+		int maxInterations = 50;
 		int parallism = 5;
-		KMeansClustering c = new KMeansClustering(k, maxMovingPointRate, parallism);
+		KMeansClustering c = new KMeansClustering(k, maxMovingPointRate, maxInterations, parallism);
 		File dir = FileUtils.getDataRootDir();
 		c.setInputFiles(new File(dir, "xy_zfmx.txt"));
 		c.clustering();

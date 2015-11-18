@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -159,7 +160,7 @@ public class EpsEstimator {
 					try {
 						while(!q.isEmpty()) {
 							Task task = q.poll();
-							KPoint2D p1 = (KPoint2D) task.kp;
+							final KPoint2D p1 = (KPoint2D) task.kp;
 							final TreeSet<Double> sortedDistances = Sets.newTreeSet(new Comparator<Double>() {
 
 								@Override
@@ -177,13 +178,15 @@ public class EpsEstimator {
 							});
 							for (int i = 0; i < allPoints.size(); i++) {
 								if(task.pos != i) {
-									Point2D p2 = allPoints.get(i);
+									final Point2D p2 = allPoints.get(i);
 									Set<Point2D> set = Sets.newHashSet((Point2D) p1, (Point2D) p2);
-									Double distance = distanceCache.getIfPresent(set);
-									if(distance == null) {
-										distance = MetricUtils.euclideanDistance(p1, p2);
-										distanceCache.put(set, distance);
-									}
+									Double distance = distanceCache.get(set, new Callable<Double>() {
+										@Override
+										public Double call() throws Exception {
+											return MetricUtils.euclideanDistance(p1, p2);
+										}
+									});
+									
 									if(!sortedDistances.contains(distance)) {
 										sortedDistances.add(distance);
 									}
