@@ -135,10 +135,13 @@ public class KMeansClusteringXYChart extends JFrame implements ClusteringXYChart
 	
 	public static void main(String args[]) {
 		int k = 10;
-		String chartTitle = "K-means [k=" + k + "]";
+		String bisecting = "bisecting_";
+		boolean isBisectingKMeans = true;
+		String chartTitle = (isBisectingKMeans ? "Bisecting " : "") + "K-means [k=" + k + "]";
 		File dir = FileUtils.getDataRootDir();
-		File centroidPointFile = new File(dir, "kmeans_" + k + "_centroids.txt");
-		File clusterPointFile = new File(dir, "kmeans_" + k + "_cluster_points.txt");
+		String prefix = isBisectingKMeans ? bisecting : "";
+		File centroidPointFile = new File(dir, prefix + "kmeans_" + k + "_centroids.txt");
+		File clusterPointFile = new File(dir, prefix + "kmeans_" + k + "_cluster_points.txt");
 		
 		final KMeansClusteringXYChart chart = new KMeansClusteringXYChart(chartTitle);
 		chart.setclusterPointFile(clusterPointFile);
