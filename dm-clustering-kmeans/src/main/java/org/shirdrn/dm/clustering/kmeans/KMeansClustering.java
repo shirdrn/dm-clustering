@@ -79,11 +79,12 @@ public class KMeansClustering extends Clustering2D {
 		}
 	}
 	
-	@Override
-	public void clustering() {
-		// initialize to put points into memory 
+	public void initialize() {
 		initialize(null);
-		
+	}
+	
+	@Override
+	public void clustering() {		
 		// start centroid calculators
 		for (int i = 0; i < parallism; i++) {
 			CentroidCalculator calculator = new CentroidCalculator(calculatorQueueSize);
@@ -407,6 +408,7 @@ public class KMeansClustering extends Clustering2D {
 		KMeansClustering c = new KMeansClustering(k, maxMovingPointRate, maxInterations, parallism);
 		File dir = FileUtils.getDataRootDir();
 		c.setInputFiles(new File(dir, "xy_zfmx.txt"));
+		c.initialize();
 		c.clustering();
 		
 		System.out.println("== Clustered points ==");
