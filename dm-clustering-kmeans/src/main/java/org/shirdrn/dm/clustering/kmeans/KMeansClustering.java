@@ -269,7 +269,6 @@ public class KMeansClustering extends Clustering2D {
 	private final class CentroidCalculator implements Runnable {
 		
 		private final Log LOG = LogFactory.getLog(CentroidCalculator.class);
-		private int localIterations = 0;
 		private final BlockingQueue<Task> q;
 		// TreeMap<centroid, points belonging to this centroid>
 		private TreeMap<Centroid, Multiset<Point2D>> localClusteredPoints = Maps.newTreeMap();
@@ -336,7 +335,7 @@ public class KMeansClustering extends Clustering2D {
 			} finally {
 				accumulatedProcessedTasks += processedTasks;
 				latch.countDown();
-				LOG.info("Calculator finished: iteration=" + (++localIterations) + ", processedTasks=" + processedTasks + 
+				LOG.info("Calculator finished: " + "processedTasks=" + processedTasks + 
 						", accumulatedProcessedTasks=" + accumulatedProcessedTasks);
 			}
 		}
@@ -345,7 +344,6 @@ public class KMeansClustering extends Clustering2D {
 			localClusteredPoints = null;
 			localClusteredPoints = Maps.newTreeMap();
 			processedTasks = 0;
-			localIterations = 0;
 		}
 	}
 	
