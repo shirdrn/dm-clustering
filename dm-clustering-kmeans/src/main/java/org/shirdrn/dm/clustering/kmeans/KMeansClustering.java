@@ -36,6 +36,11 @@ import com.google.common.collect.Multiset;
 import com.google.common.collect.Multisets;
 import com.google.common.collect.Sets;
 
+/**
+ * Basic k-means clustering algorithm.
+ *
+ * @author yanjun
+ */
 public class KMeansClustering extends Clustering2D {
 
 	private static final Log LOG = LogFactory.getLog(KMeansClustering.class);
