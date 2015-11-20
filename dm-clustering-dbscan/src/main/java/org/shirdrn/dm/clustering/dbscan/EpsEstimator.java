@@ -36,7 +36,7 @@ public class EpsEstimator {
 
 	private static final Log LOG = LogFactory.getLog(EpsEstimator.class);
 	private final List<Point2D> allPoints = Lists.newArrayList();
-	private Cache<Set<Point2D>, Double> distanceCache;
+	private final Cache<Set<Point2D>, Double> distanceCache;
 	private int k = 4;
 	private int parallism = 5;
 	private final ExecutorService executorService;

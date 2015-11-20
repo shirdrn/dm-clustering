@@ -5,14 +5,17 @@ import org.shirdrn.dm.clustering.common.Point2D;
 public class Centroid extends Point2D implements Comparable<Centroid> {
 	
 	private Integer id;
+	private final Point2D point;
 
 	public Centroid(Double x, Double y) {
 		super(x, y);
+		point = new Point2D(x, y);
 	}
 
 	public Centroid(Integer id, Point2D point) {
 		super(point.getX(), point.getY());
 		this.id = id;
+		this.point = point;
 	}
 
 	public Integer getId() {
@@ -21,6 +24,10 @@ public class Centroid extends Point2D implements Comparable<Centroid> {
 
 	public void setId(Integer id) {
 		this.id = id;
+	}
+	
+	public Point2D toPoint() {
+		return point;
 	}
 
 	@Override
