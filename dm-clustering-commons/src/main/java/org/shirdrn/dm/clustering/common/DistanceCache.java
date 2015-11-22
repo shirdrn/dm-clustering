@@ -6,6 +6,7 @@ import java.util.concurrent.ExecutionException;
 
 import org.shirdrn.dm.clustering.common.utils.MetricUtils;
 
+import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
@@ -16,6 +17,7 @@ public class DistanceCache {
 	private final Cache<Set<Point2D>, Double> distanceCache;
 	
 	public DistanceCache(int cacheSize) {
+		Preconditions.checkArgument(cacheSize > 0, "Cache size SHOULD be: cacheSize > 0!");
 		distanceCache = CacheBuilder.newBuilder().maximumSize(cacheSize).build();
 	}
 	

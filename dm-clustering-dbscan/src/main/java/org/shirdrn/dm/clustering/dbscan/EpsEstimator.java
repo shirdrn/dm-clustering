@@ -5,10 +5,8 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -16,14 +14,12 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.shirdrn.dm.clustering.common.DistanceCache;
 import org.shirdrn.dm.clustering.common.NamedThreadFactory;
 import org.shirdrn.dm.clustering.common.Point2D;
 import org.shirdrn.dm.clustering.common.utils.FileUtils;
-import org.shirdrn.dm.clustering.common.utils.MetricUtils;
 
 import com.google.common.base.Throwables;
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 
@@ -36,7 +32,7 @@ public class EpsEstimator {
 
 	private static final Log LOG = LogFactory.getLog(EpsEstimator.class);
 	private final List<Point2D> allPoints = Lists.newArrayList();
-	private final Cache<Set<Point2D>, Double> distanceCache;
+	private final DistanceCache distanceCache;
 	private int k = 4;
 	private int parallism = 5;
 	private final ExecutorService executorService;
@@ -55,7 +51,7 @@ public class EpsEstimator {
 		super();
 		this.k = k;
 		this.parallism = parallism;
-		distanceCache = CacheBuilder.newBuilder().maximumSize(Integer.MAX_VALUE).build();
+		distanceCache = new DistanceCache(Integer.MAX_VALUE);
 		latch = new CountDownLatch(parallism);
 		executorService = Executors.newCachedThreadPool(new NamedThreadFactory("KDCALC"));
 		LOG.info("Config: k=" + k + ", parallism=" + parallism);
@@ -179,13 +175,7 @@ public class EpsEstimator {
 							for (int i = 0; i < allPoints.size(); i++) {
 								if(task.pos != i) {
 									final Point2D p2 = allPoints.get(i);
-									Set<Point2D> set = Sets.newHashSet((Point2D) p1, (Point2D) p2);
-									Double distance = distanceCache.get(set, new Callable<Double>() {
-										@Override
-										public Double call() throws Exception {
-											return MetricUtils.euclideanDistance(p1, p2);
-										}
-									});
+									Double distance = distanceCache.computeDistance((Point2D) p1, (Point2D) p2);
 									
 									if(!sortedDistances.contains(distance)) {
 										sortedDistances.add(distance);
@@ -228,10 +218,6 @@ public class EpsEstimator {
 		}
 	}
 	
-	public double getDistance(Set<Point2D> pointPair) {
-		return distanceCache.getIfPresent(pointPair);
-	}
-	
 	/**
 	 * k-distance point
 	 * 
@@ -259,6 +245,10 @@ public class EpsEstimator {
 			return super.equals(obj);
 		}
 		
+	}
+	
+	public DistanceCache getDistanceCache() {
+		return distanceCache;
 	}
 	
 }

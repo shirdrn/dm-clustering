@@ -73,6 +73,8 @@ public class BisectingKMeansClustering extends Clustering2D {
 			
 			// compute cluster to be bisected
 			ClusterInfo cluster = chooseClusterToBisect(clusteringPoints);
+			// remove centroid from collected clusters map
+			clusteringPoints.remove(cluster.centroidToBisect);
 			LOG.info("Cluster to be bisected: " + cluster);
 			
 			points = Lists.newArrayList();
@@ -134,9 +136,7 @@ public class BisectingKMeansClustering extends Clustering2D {
 				clusterToBisect = cpSet;
 			}
 		}
-		// remove centroid from collected clusters map
-		clusteringPoints.remove(centroidToBisect);
-		return new ClusterInfo(clusterIdWithMaxSSE, clusterToBisect, maxSSE);
+		return new ClusterInfo(clusterIdWithMaxSSE, centroidToBisect, clusterToBisect, maxSSE);
 	}
 	
 	private double computeSSE(Centroid centroid, Set<ClusterPoint<Point2D>> cpSet) {
@@ -153,19 +153,21 @@ public class BisectingKMeansClustering extends Clustering2D {
 	private class ClusterInfo {
 		
 		private final int id;
+		private final Centroid centroidToBisect;
 		private final Set<ClusterPoint<Point2D>> clusterPointsToBisect;
 		private final double maxSSE;
 		
-		public ClusterInfo(int id, Set<ClusterPoint<Point2D>> clusterPointsToBisect, double maxSSE) {
+		public ClusterInfo(int id, Centroid centroidToBisect, Set<ClusterPoint<Point2D>> clusterPointsToBisect, double maxSSE) {
 			super();
 			this.id = id;
+			this.centroidToBisect = centroidToBisect;
 			this.clusterPointsToBisect = clusterPointsToBisect;
 			this.maxSSE = maxSSE;
 		}
 		
 		@Override
 		public String toString() {
-			return "ClusterInfo[id=" + id + ", points=" + clusterPointsToBisect.size() + ". maxSSE=" + maxSSE + "]";
+			return "ClusterInfo[id=" + id + ", points=" + clusterPointsToBisect.size() + ", maxSSE=" + maxSSE + "]";
 		}
 	}
 	

@@ -165,7 +165,7 @@ public class DBSCANClustering extends Clustering2D {
 	private Set<Point2D> joinConnectedCorePoints(Point2D p1, Set<Point2D> leftCorePoints) {
 		Set<Point2D> set = Sets.newHashSet();
 		for(Point2D p2 : leftCorePoints) {
-			double distance = epsEstimator.getDistance(Sets.newHashSet(p1, p2));
+			double distance = epsEstimator.getDistanceCache().computeDistance(p1, p2);
 			if(distance <= eps) {
 				// join 2 core points to the same cluster
 				set.add(p2);
@@ -207,7 +207,7 @@ public class DBSCANClustering extends Clustering2D {
 						while(iter.hasNext()) {
 							Point2D p2 = iter.next();
 							if(!p2.equals(p1)) {
-								double distance = epsEstimator.getDistance(Sets.newHashSet(p1, p2));
+								double distance = epsEstimator.getDistanceCache().computeDistance(p1, p2);
 								// collect a point belonging to the point p1
 								if(distance <= eps) {
 									set.add(p2);

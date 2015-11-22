@@ -57,7 +57,6 @@ public class KMeansClustering extends Clustering2D {
 	private final List<CentroidCalculator> calculators = Lists.newArrayList();
 	private volatile boolean completeToAssignTask = false;
 	private volatile boolean clusteringCompletedFinally = false;
-	private final Object controllingSignal = new Object();
 	
 	public KMeansClustering(int k, float maxMovingPointRate, int maxIterations, int parallism) {
 		super(parallism);
@@ -114,9 +113,6 @@ public class KMeansClustering extends Clustering2D {
 					&& !stopped 
 					&& iterations < maxIterations) {
 				LOG.info("Start iterate: #" + (++iterations));
-				// signal calculators
-				notifyAllCalculators(0);
-				LOG.info("Notify all calculator to process tasks...");
 				
 				currentClusteringResult = computeCentroids(centroids);
 				LOG.info("Re-computed centroids: " + centroids);
@@ -157,8 +153,6 @@ public class KMeansClustering extends Clustering2D {
 		} finally {
 			// notify all calculators to exit normally
 			clusteringCompletedFinally = true;
-			LOG.info("Notify all calculators to exit normally...");
-			notifyAllCalculators(500);
 			
 			LOG.info("Shutdown executor service: " + executorService);
 			executorService.shutdown();
@@ -177,19 +171,6 @@ public class KMeansClustering extends Clustering2D {
 				id++;
 			}
 			centroidSet = currentClusteringResult.clusteringPoints.keySet();
-		}
-	}
-
-	private void notifyAllCalculators(int waitMillisecs) {
-		synchronized(controllingSignal) {
-			controllingSignal.notifyAll();
-		}
-		if(waitMillisecs > 0) {
-			try {
-				Thread.sleep(waitMillisecs);
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-			}
 		}
 	}
 
@@ -289,14 +270,12 @@ public class KMeansClustering extends Clustering2D {
 			while(!clusteringCompletedFinally) {
 				try {
 					process();
-					synchronized(controllingSignal) {
-						controllingSignal.wait();
-					}
+					Thread.sleep(100);
 				} catch (Exception e) {
 					e.printStackTrace();
 				}
 			}
-			LOG.info("Received exit signal, exited. ");
+			LOG.info("Received finally notification, exited. ");
 		}
 
 		private void process() {
