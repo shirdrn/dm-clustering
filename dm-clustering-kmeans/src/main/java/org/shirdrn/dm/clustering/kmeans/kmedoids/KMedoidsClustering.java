@@ -1,6 +1,7 @@
 package org.shirdrn.dm.clustering.kmeans.kmedoids;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +18,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.shirdrn.dm.clustering.common.ClusterPoint;
+import org.shirdrn.dm.clustering.common.ClusterPoint2D;
 import org.shirdrn.dm.clustering.common.Clustering2D;
 import org.shirdrn.dm.clustering.common.ClusteringResult;
 import org.shirdrn.dm.clustering.common.DistanceCache;
@@ -44,7 +47,7 @@ public class KMedoidsClustering extends Clustering2D {
 	private static final Log LOG = LogFactory.getLog(KMedoidsClustering.class);
 	private final int k;
 	private final List<Point2D> allPoints = Lists.newArrayList();
-	private final TreeSet<Centroid> medoidSet = Sets.newTreeSet();
+	private TreeSet<Centroid> medoidSet;
 	private final SelectInitialCentroidsPolicy selectInitialCentroidsPolicy;
 	private final List<NearestMedoidSeeker> seekers = Lists.newArrayList();
 	private int taskIndex = 0;
@@ -54,6 +57,8 @@ public class KMedoidsClustering extends Clustering2D {
 	private volatile boolean completeToAssignTask = false;
 	private final Random random = new Random();
 	private final DistanceCache distanceCache;
+	private volatile boolean finallyCompleted = false;
+	private final Object signalLock = new Object();
 	
 	public KMedoidsClustering(int k, int parallism) {
 		super(parallism);
@@ -71,160 +76,230 @@ public class KMedoidsClustering extends Clustering2D {
 		FileUtils.read2DPointsFromFiles(allPoints, "[\t,;\\s]+", inputFiles);
 		LOG.info("Total points: count=" + allPoints.size());
 		
-		final TreeSet<Centroid> medoids = selectInitialCentroidsPolicy.select(k, allPoints);
-		final Set<Point2D> centerPoints = Sets.newHashSet();
-		for(Centroid c : medoids) {
-			centerPoints.add(new Point2D(c.getX(), c.getY()));
-		}
-		LOG.info("Initial selected medoids: " + medoids);
+		ClusterHolder currentHolder = new ClusterHolder();
+		ClusterHolder previousHolder = null;
 		
+		currentHolder.medoids = selectInitialCentroidsPolicy.select(k, allPoints);
+		LOG.info("Initial selected medoids: " + currentHolder.medoids);
+		
+		// start seeker threads
 		for (int i = 0; i < parallism; i++) {
-			final NearestMedoidSeeker seeker = new NearestMedoidSeeker(seekerQueueSize, medoids);
+			final NearestMedoidSeeker seeker = new NearestMedoidSeeker(seekerQueueSize);
 			executorService.execute(seeker);
 			seekers.add(seeker);
 		}
 		
-		// assign task to seeker threads
+		// /////////////////
+		// make iterations
+		// /////////////////
+		
+		boolean firstTimeToAssign = true;
+		int iterations = 0;
+		double previousSAD = 0.0;
+		double currentSAD = 0.0;
+		final int maxIterations = 1000;
 		try {
-			for(Point2D p : allPoints) {
-				if(!centerPoints.contains(p)) {
-					selectSeeker().q.put(p);
+			while(!finallyCompleted) {
+				LOG.info("Current medoid set: " + currentHolder.medoids);
+				try {
+					if(firstTimeToAssign) {
+						assignNearestMedoids(currentHolder, true);
+						firstTimeToAssign = false;
+					} else {
+						assignNearestMedoids(currentHolder, false);
+					}
+					
+					// merge result
+					mergeMedoidAssignedResult(currentHolder);
+					
+					// compare cost for 2 iterations, we use SAD (sum of absolute differences)
+					if(previousSAD == 0.0) {
+						// first time compute SAD
+						previousSAD = currentSAD;
+						currentSAD = computeSAD(currentHolder);
+					} else {
+						RandomPoint randomPoint = selectNonCenterPointRandomly(currentHolder);
+						LOG.debug("Randomly selected: " + randomPoint);
+						
+						// compute current cost when using random point to substitute for the medoid
+						currentSAD = computeSAD(currentHolder);
+						// compare SADs
+						if(currentSAD - previousSAD < 0.0) {
+							previousHolder = currentHolder;
+							previousSAD = currentSAD;
+							
+							// construct new cluster holder
+							currentHolder = constructNewHolder(currentHolder, randomPoint);
+						}
+					}
+					LOG.info("Iteration #" + (++iterations) + ": previousSAD=" + previousSAD + ", currentSAD=" + currentSAD);
+					
+					if(iterations > maxIterations) {
+						finallyCompleted = true;
+					}
+				} catch(Exception e) {
+					Throwables.propagate(e);
+				} finally {
+					if(!finallyCompleted) {
+						latch = new CountDownLatch(parallism);
+						completeToAssignTask = false;
+					}
+					synchronized(signalLock) {
+						signalLock.notifyAll();
+					}
+				}
+			}
+		} finally {
+			LOG.info("Shutdown executor service: " + executorService);
+			executorService.shutdown();
+		}
+		
+		// finally result
+		medoidSet = previousHolder.medoids;
+		Iterator<Entry<Centroid, List<Point2D>>> iter = previousHolder.medoidWithNearestPointSet.entrySet().iterator();
+		while(iter.hasNext()) {
+			Entry<Centroid, List<Point2D>> entry = iter.next();
+			int clusterId = entry.getKey().getId();
+			Set<ClusterPoint<Point2D>> set = Sets.newHashSet();
+			for(Point2D p : entry.getValue()) {
+				set.add(new ClusterPoint2D(p, clusterId));
+			}
+			clusteredPoints.put(clusterId, set);
+		}
+	}
+
+	private void mergeMedoidAssignedResult(ClusterHolder currentHolder) {
+		currentHolder.medoidWithNearestPointSet = Maps.newTreeMap();
+		for(NearestMedoidSeeker seeker : seekers) {
+			Iterator<Entry<Centroid, List<Point2D>>> iter = seeker.clusteringNearestPoints.entrySet().iterator();
+			while(iter.hasNext()) {
+				Entry<Centroid, List<Point2D>> entry = iter.next();
+				List<Point2D> set = currentHolder.medoidWithNearestPointSet.get(entry.getKey());
+				if(set == null) {
+					set = Lists.newArrayList();
+					currentHolder.medoidWithNearestPointSet.put(entry.getKey(), set);
+				}
+				set.addAll(entry.getValue());
+			}
+		}
+	}
+
+	private void assignNearestMedoids(final ClusterHolder holder, boolean firstTimeToAssign) {
+		try {
+			// assign tasks to seeker threads
+			if(firstTimeToAssign) {
+				holder.centerPoints = Sets.newHashSet();
+				for(Centroid medoid : holder.medoids) {
+					holder.centerPoints.add(medoid.toPoint());
+				}
+				for(Point2D p : allPoints) {
+					if(!holder.centerPoints.contains(p)) {
+						selectSeeker().q.put(new Task(holder.medoids, p));
+					}
+				}
+			} else {
+				for(List<Point2D> points : holder.medoidWithNearestPointSet.values()) {
+					for(Point2D p : points) {
+						selectSeeker().q.put(new Task(holder.medoids, p));
+					}
 				}
 			}
 		} catch(Exception e) {
-			throw Throwables.propagate(e);
+			Throwables.propagate(e);
 		} finally {
 			try {
 				completeToAssignTask = true;
 				latch.await();
 			} catch (InterruptedException e) { }
 		}
-		
-		final List<Point2D> randomNonCenterPoints = allPoints;
-		for(Centroid medoid : medoids) {
-			randomNonCenterPoints.remove(medoid.toPoint());
-		}
-		TreeMap<Centroid, List<Point2D>> medoidWithNearestPointSet = Maps.newTreeMap();
-		
-		try {
-			// merge result
-			for(NearestMedoidSeeker seeker : seekers) {
-				Iterator<Entry<Centroid, List<Point2D>>> iter = seeker.clusteringNearestPoints.entrySet().iterator();
-				while(iter.hasNext()) {
-					Entry<Centroid, List<Point2D>> entry = iter.next();
-					List<Point2D> set = medoidWithNearestPointSet.get(entry.getKey());
-					if(set == null) {
-						set = Lists.newArrayList();
-						medoidWithNearestPointSet.put(entry.getKey(), set);
-					}
-					set.addAll(entry.getValue());
-				}
-			}
-			
-			double previousSAD = computeSAD(medoidWithNearestPointSet);
-			double currentSAD = 0.0;
-			double diff = previousSAD - currentSAD;
-			
-			RandomPoint randomPoint = selectNonCenterPointRandomly(medoidWithNearestPointSet, randomNonCenterPoints);
-			LOG.debug("Randomly selected: " + randomPoint);
-			
-			while(true) {
-				Point2D p = randomPoint.point;
-				randomNonCenterPoints.remove(p); // remove from randomNonCenterPoints
-				currentSAD = computeSAD(medoidWithNearestPointSet, randomPoint);
-				diff = previousSAD - currentSAD;
-				if(diff > 0) {
-					// swap: randomly selected point substitutes for medoid
-					List<Point2D> cluster = medoidWithNearestPointSet.remove(randomPoint.medoid);
-					Centroid newMedoid = new Centroid(randomPoint.medoid.getId(), p);
-					medoidWithNearestPointSet.put(newMedoid, cluster); // put new medoid with its neighbours to medoidWithNearestPointSet
-					medoidWithNearestPointSet.get(newMedoid).remove(randomPoint.pointIndex);
-					
-					// add old medoid point to both new medoid's neighbour set and randomNonCenterPoints 
-					Point2D oldMedoid = randomPoint.medoid.toPoint();
-					medoidWithNearestPointSet.get(newMedoid).add(randomPoint.pointIndex, oldMedoid); 
-					randomNonCenterPoints.add(oldMedoid);
-					previousSAD = currentSAD;
-				} else {
-					// compute for next selected non-medoid point
-					randomPoint = selectNonCenterPointRandomly(medoidWithNearestPointSet, randomNonCenterPoints);
-					LOG.debug("Randomly selected: " + randomPoint);
-				}
-				LOG.info("Iteration meta: previousSAD=" + previousSAD + ", currentSAD=" + currentSAD);
-			}
-			
-//			for(Centroid medoid : medoidWithNearestPointSet.keySet()) {
-//				medoidSet.add(medoid);
-//			}
-		} finally {
-			LOG.info("Shutdown executor service: " + executorService);
-			executorService.shutdown();
-		}
-		
-	}
-	
-	private double computeSAD(TreeMap<Centroid, List<Point2D>> medoidWithNearestPointSet) {
-		return computeSAD(medoidWithNearestPointSet, null);
 	}
 
-	private double computeSAD(TreeMap<Centroid, List<Point2D>> medoidWithNearestPointSet, RandomPoint randomPoint) {
-		double sad = 0.0; // sum of absolute differences
-		for(Centroid medoid : medoidWithNearestPointSet.keySet()) {
+	private ClusterHolder constructNewHolder(final ClusterHolder holder, RandomPoint randomPoint) {
+		ClusterHolder newHolder = new ClusterHolder();
+		newHolder.centerPoints = Sets.newHashSet();
+		for(Centroid c : holder.medoidWithNearestPointSet.keySet()) {
+			newHolder.centerPoints.add(c.toPoint());
+		}
+		Point2D newPoint = randomPoint.point;
+		Centroid oldMedoid = randomPoint.medoid;
+		Centroid newMedoid = new Centroid(oldMedoid.getId(), newPoint);
+		
+		newHolder.centerPoints.remove(oldMedoid.toPoint());
+		newHolder.centerPoints.add(newPoint);
+		
+		newHolder.medoids = Sets.newTreeSet();
+		newHolder.medoids.addAll(holder.medoidWithNearestPointSet.keySet());
+		newHolder.medoids.remove(oldMedoid);
+		newHolder.medoids.add(newMedoid);
+		
+		// share the same medoidWithNearestPointSet
+		newHolder.medoidWithNearestPointSet = holder.medoidWithNearestPointSet;
+		List<Point2D> oldPoints = newHolder.medoidWithNearestPointSet.get(oldMedoid);
+		oldPoints.remove(newPoint);
+		oldPoints.add(oldMedoid.toPoint());
+		newHolder.medoidWithNearestPointSet.put(newMedoid, oldPoints);
+		return newHolder;
+	}
+	
+	private double computeSAD(final ClusterHolder holder) {
+		double sad = 0.0; 
+		for(Centroid medoid : holder.medoidWithNearestPointSet.keySet()) {
 			double distances = 0.0;
-			List<Point2D> points = medoidWithNearestPointSet.get(medoid);
-			if(randomPoint == null || !randomPoint.medoid.equals(medoid)) {
-				for(Point2D p : points) {
-					distances += distanceCache.computeDistance(medoid.toPoint(), p);
-				}
-			} else {
-				if(randomPoint.medoid.equals(medoid)) {
-					for (int i = 0; i < points.size(); i++) {
-						if(randomPoint.pointIndex != i) {
-							distances += distanceCache.computeDistance(randomPoint.medoid.toPoint(), points.get(i));
-						} else {
-							distances += distanceCache.computeDistance(randomPoint.medoid.toPoint(), medoid.toPoint());
-						}
-					}
-				}
+			List<Point2D> points = holder.medoidWithNearestPointSet.get(medoid);
+			for(Point2D p : points) {
+				distances += distanceCache.computeDistance(medoid.toPoint(), p);
 			}
 			sad += distances;
 		}
 		return sad;
 	}
 	
-	private RandomPoint selectNonCenterPointRandomly(TreeMap<Centroid, List<Point2D>> medoidWithNearestPointSet, 
-			List<Point2D> randomNonCenterPoints) {
-		// select a non center point randomly, do not remove from randomNonCenterPoints
-		int index = random.nextInt(randomNonCenterPoints.size());
-		Point2D point = randomNonCenterPoints.get(index);
-		Iterator<Entry<Centroid, List<Point2D>>> iter = medoidWithNearestPointSet.entrySet().iterator();
-		Centroid medoid = null;
-		while(iter.hasNext()) {
-			Entry<Centroid, List<Point2D>> entry = iter.next();
-			if(entry.getValue().contains(point)) {
-				medoid = entry.getKey();
-				break;
-			}
-		}
-		return new RandomPoint(medoid, point, index);
+	private RandomPoint selectNonCenterPointRandomly(ClusterHolder holder) {
+		List<Centroid> medoids = new ArrayList<Centroid>(holder.medoidWithNearestPointSet.keySet());
+		Centroid selectedMedoid = medoids.get(random.nextInt(medoids.size()));
+		
+		List<Point2D> belongingPoints = holder.medoidWithNearestPointSet.get(selectedMedoid);
+		Point2D point = belongingPoints.get(random.nextInt(belongingPoints.size()));
+		return new RandomPoint(selectedMedoid, point);
 	}
 	
-	class RandomPoint {
+	private class Task {
 		
-		final Centroid medoid;
+		final TreeSet<Centroid> medoids;
 		final Point2D point;
-		final int pointIndex;
 		
-		public RandomPoint(Centroid medoid, Point2D point, int pointIndex) {
+		public Task(TreeSet<Centroid> medoids, Point2D point) {
+			super();
+			this.medoids = medoids;
+			this.point = point;
+		}
+	}
+	
+	private class ClusterHolder {
+		
+		TreeMap<Centroid, List<Point2D>> medoidWithNearestPointSet;
+		Set<Point2D> centerPoints;
+		TreeSet<Centroid> medoids;
+		
+		public ClusterHolder() {
+			super();
+		}
+	}
+	
+	private class RandomPoint {
+		
+		final Centroid medoid; // medoid which the random point belongs to
+		final Point2D point;
+		
+		public RandomPoint(Centroid medoid, Point2D point) {
 			super();
 			this.medoid = medoid;
 			this.point = point;
-			this.pointIndex = pointIndex;
 		}
 		
 		@Override
 		public String toString() {
-			return "RandomPoint[medoid=" + medoid + ", point=" + point + ", index=" + pointIndex + "]";
+			return "RandomPoint[medoid=" + medoid + ", point=" + point + "]";
 		}
 	}
 
@@ -240,26 +315,36 @@ public class KMedoidsClustering extends Clustering2D {
 	private class NearestMedoidSeeker implements Runnable {
 		
 		private final Log LOG = LogFactory.getLog(NearestMedoidSeeker.class);
-		private final BlockingQueue<Point2D> q;
-		private final TreeSet<Centroid> initialMedoids;
-		private final  Map<Centroid, List<Point2D>> clusteringNearestPoints = Maps.newHashMap();
-		private int processedTasks;
+		private final BlockingQueue<Task> q;
+		private Map<Centroid, List<Point2D>> clusteringNearestPoints = Maps.newHashMap();
+		private int processedTasks = 0;
 		
-		public NearestMedoidSeeker(int qsize, TreeSet<Centroid> initialMedoids) {
-			q = new LinkedBlockingQueue<Point2D>(qsize);
-			this.initialMedoids = initialMedoids;
+		public NearestMedoidSeeker(int qsize) {
+			q = new LinkedBlockingQueue<Task>(qsize);
 		}
 		
 		@Override
 		public void run() {
+			while(!finallyCompleted) {
+				try {
+					assign();
+					Thread.sleep(200);
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+			}
+		}
+
+		private void assign() throws InterruptedException {
 			try {
 				while(!completeToAssignTask) {
 					while(!q.isEmpty()) {
 						processedTasks++;
-						final Point2D p1 = q.poll();
+						final Task task = q.poll();
+						final Point2D p1 = task.point;
 						double minDistance = Double.MAX_VALUE;
 						Centroid nearestMedoid = null;
-						for(Centroid medoid : initialMedoids) {
+						for(Centroid medoid : task.medoids) {
 							final Point2D p2 = medoid.toPoint();
 							Double distance = distanceCache.computeDistance(p1, p2);
 							if(distance < minDistance) {
@@ -282,15 +367,21 @@ public class KMedoidsClustering extends Clustering2D {
 				e.printStackTrace();
 			} finally {
 				latch.countDown();
-				LOG.info("Point processed: processedTasks=" + processedTasks);
+				LOG.debug("Point processed: processedTasks=" + processedTasks);
+				
+				synchronized(signalLock) {
+					signalLock.wait();
+				}
+				
+				clusteringNearestPoints = Maps.newHashMap();
+				processedTasks = 0;
 			}
-			
 		}
 	}
 	
 	public static void main(String[] args) {
 		int k = 10;
-		int parallism = 5;
+		int parallism = 4;
 		KMedoidsClustering c = new KMedoidsClustering(k, parallism);
 		File dir = FileUtils.getDataRootDir();
 		c.setInputFiles(new File(dir, "xy_zfmx.txt"));

@@ -54,7 +54,7 @@ public class BisectingKMeansClustering extends Clustering2D {
 		while(clusteringPoints.size() <= k) {
 			LOG.info("Start bisecting iterations: #" + (++bisectingIterations) + ", bisectingK=" + bisectingK + ", maxMovingPointRate=" + maxMovingPointRate + 
 					", maxInterations=" + maxInterations + ", parallism=" + parallism);
-			// for k=tempK, execute k-means clustering
+			// for k=bisectingK, execute k-means clustering
 			final KMeansClustering kmeans = new KMeansClustering(bisectingK, maxMovingPointRate, maxInterations, parallism);
 			kmeans.initialize(points);
 			kmeans.clustering();
