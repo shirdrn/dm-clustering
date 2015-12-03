@@ -6,19 +6,19 @@ import java.util.Random;
 import java.util.Set;
 import java.util.TreeSet;
 
+import org.shirdrn.dm.clustering.common.CenterPoint;
 import org.shirdrn.dm.clustering.common.Point2D;
-import org.shirdrn.dm.clustering.kmeans.common.Centroid;
-import org.shirdrn.dm.clustering.kmeans.common.SelectInitialCentroidsPolicy;
+import org.shirdrn.dm.clustering.kmeans.common.SelectInitialCenterPointsPolicy;
 
 import com.google.common.collect.Sets;
 
-public class RandomlySelectInitialCentroidsPolicy implements SelectInitialCentroidsPolicy {
+public class RandomlySelectInitialCenterPointsPolicy implements SelectInitialCenterPointsPolicy {
 
 	private final Random random = new Random();
 	
 	@Override
-	public TreeSet<Centroid> select(int k, List<Point2D> points) {
-		TreeSet<Centroid> centroids = Sets.newTreeSet();
+	public TreeSet<CenterPoint> select(int k, List<Point2D> points) {
+		TreeSet<CenterPoint> centroids = Sets.newTreeSet();
 		Set<Point2D> selectedPoints = Sets.newHashSet();
 		while(selectedPoints.size() < k) {
 			int index = random.nextInt(points.size());
@@ -29,7 +29,7 @@ public class RandomlySelectInitialCentroidsPolicy implements SelectInitialCentro
 		Iterator<Point2D> iter = selectedPoints.iterator();
 		int id = 0;
 		while(iter.hasNext()) {
-			centroids.add(new Centroid(id++, iter.next()));
+			centroids.add(new CenterPoint(id++, iter.next()));
 		}
 		return centroids;
 	}

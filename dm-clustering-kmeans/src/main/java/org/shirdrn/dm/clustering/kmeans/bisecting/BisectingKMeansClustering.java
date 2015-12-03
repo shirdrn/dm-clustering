@@ -9,6 +9,7 @@ import java.util.Set;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.shirdrn.dm.clustering.common.CenterPoint;
 import org.shirdrn.dm.clustering.common.ClusterPoint;
 import org.shirdrn.dm.clustering.common.Clustering2D;
 import org.shirdrn.dm.clustering.common.ClusteringResult;
@@ -17,7 +18,6 @@ import org.shirdrn.dm.clustering.common.utils.ClusteringUtils;
 import org.shirdrn.dm.clustering.common.utils.FileUtils;
 import org.shirdrn.dm.clustering.common.utils.MetricUtils;
 import org.shirdrn.dm.clustering.kmeans.KMeansClustering;
-import org.shirdrn.dm.clustering.kmeans.common.Centroid;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -32,7 +32,7 @@ public class BisectingKMeansClustering extends Clustering2D {
 
 	private static final Log LOG = LogFactory.getLog(BisectingKMeansClustering.class);
 	private final int k;
-	private final Set<Centroid> centroidSet = Sets.newTreeSet(); 
+	private final Set<CenterPoint> centroidSet = Sets.newTreeSet(); 
 	
 	public BisectingKMeansClustering(int k) {
 		super(1);
@@ -50,7 +50,7 @@ public class BisectingKMeansClustering extends Clustering2D {
 		float maxMovingPointRate = 0.01f;
 		int maxInterations = 20;
 		List<Point2D> points = allPoints;
-		final Map<Centroid, Set<ClusterPoint<Point2D>>> clusteringPoints = Maps.newConcurrentMap();
+		final Map<CenterPoint, Set<ClusterPoint<Point2D>>> clusteringPoints = Maps.newConcurrentMap();
 		while(clusteringPoints.size() <= k) {
 			LOG.info("Start bisecting iterations: #" + (++bisectingIterations) + ", bisectingK=" + bisectingK + ", maxMovingPointRate=" + maxMovingPointRate + 
 					", maxInterations=" + maxInterations + ", parallism=" + parallism);
@@ -63,7 +63,7 @@ public class BisectingKMeansClustering extends Clustering2D {
 			
 			// merge cluster points for choosing cluster bisected again
 			int id = generateNewClusterId(clusteringPoints.keySet());
-			Set<Centroid> bisectedCentroids = kmeans.getCentroidSet();
+			Set<CenterPoint> bisectedCentroids = kmeans.getCentroidSet();
 			Map<Integer, Set<ClusterPoint<Point2D>>> bisectedClusterPoints = clusteringResult.getClusteredPoints();
 			merge(clusteringPoints, id, bisectedCentroids, bisectedClusterPoints);
 			
@@ -86,19 +86,19 @@ public class BisectingKMeansClustering extends Clustering2D {
 		}
 		
 		// finally transform to result format
-		Iterator<Entry<Centroid, Set<ClusterPoint<Point2D>>>> iter = clusteringPoints.entrySet().iterator();
+		Iterator<Entry<CenterPoint, Set<ClusterPoint<Point2D>>>> iter = clusteringPoints.entrySet().iterator();
 		while(iter.hasNext()) {
-			Entry<Centroid, Set<ClusterPoint<Point2D>>> entry = iter.next();
+			Entry<CenterPoint, Set<ClusterPoint<Point2D>>> entry = iter.next();
 			clusteredPoints.put(entry.getKey().getId(), entry.getValue());
 			centroidSet.add(entry.getKey());
 		}
 	}
 
-	private void merge(final Map<Centroid, Set<ClusterPoint<Point2D>>> clusteringPoints, 
-			int id, Set<Centroid> bisectedCentroids, 
+	private void merge(final Map<CenterPoint, Set<ClusterPoint<Point2D>>> clusteringPoints, 
+			int id, Set<CenterPoint> bisectedCentroids, 
 			Map<Integer, Set<ClusterPoint<Point2D>>> bisectedClusterPoints) {
 		int startId = id;
-		for(Centroid centroid : bisectedCentroids) {
+		for(CenterPoint centroid : bisectedCentroids) {
 			Set<ClusterPoint<Point2D>> set = bisectedClusterPoints.get(centroid.getId());
 			centroid.setId(startId);
 			// here, we don't update cluster id for ClusterPoint object in set,
@@ -108,9 +108,9 @@ public class BisectingKMeansClustering extends Clustering2D {
 		}
 	}
 
-	private int generateNewClusterId(Set<Centroid> keptCentroids) {
+	private int generateNewClusterId(Set<CenterPoint> keptCentroids) {
 		int id = -1;
-		for(Centroid centroid : keptCentroids) {
+		for(CenterPoint centroid : keptCentroids) {
 			if(centroid.getId() > id) {
 				id = centroid.getId();
 			}
@@ -118,15 +118,15 @@ public class BisectingKMeansClustering extends Clustering2D {
 		return id + 1;
 	}
 
-	private ClusterInfo chooseClusterToBisect(Map<Centroid, Set<ClusterPoint<Point2D>>> clusteringPoints) {
+	private ClusterInfo chooseClusterToBisect(Map<CenterPoint, Set<ClusterPoint<Point2D>>> clusteringPoints) {
 		double maxSSE = 0.0;
 		int clusterIdWithMaxSSE = -1;
-		Centroid centroidToBisect = null;
+		CenterPoint centroidToBisect = null;
 		Set<ClusterPoint<Point2D>> clusterToBisect = null;
-		Iterator<Entry<Centroid, Set<ClusterPoint<Point2D>>>> iter = clusteringPoints.entrySet().iterator();
+		Iterator<Entry<CenterPoint, Set<ClusterPoint<Point2D>>>> iter = clusteringPoints.entrySet().iterator();
 		while(iter.hasNext()) {
-			Entry<Centroid, Set<ClusterPoint<Point2D>>> entry = iter.next();
-			Centroid centroid = entry.getKey();
+			Entry<CenterPoint, Set<ClusterPoint<Point2D>>> entry = iter.next();
+			CenterPoint centroid = entry.getKey();
 			Set<ClusterPoint<Point2D>> cpSet = entry.getValue();
 			double sse = computeSSE(centroid, cpSet);
 			if(sse > maxSSE) {
@@ -139,7 +139,7 @@ public class BisectingKMeansClustering extends Clustering2D {
 		return new ClusterInfo(clusterIdWithMaxSSE, centroidToBisect, clusterToBisect, maxSSE);
 	}
 	
-	private double computeSSE(Centroid centroid, Set<ClusterPoint<Point2D>> cpSet) {
+	private double computeSSE(CenterPoint centroid, Set<ClusterPoint<Point2D>> cpSet) {
 		double sse = 0.0;
 		for(ClusterPoint<Point2D> cp : cpSet) {
 			// update cluster id for ClusterPoint object
@@ -153,11 +153,11 @@ public class BisectingKMeansClustering extends Clustering2D {
 	private class ClusterInfo {
 		
 		private final int id;
-		private final Centroid centroidToBisect;
+		private final CenterPoint centroidToBisect;
 		private final Set<ClusterPoint<Point2D>> clusterPointsToBisect;
 		private final double maxSSE;
 		
-		public ClusterInfo(int id, Centroid centroidToBisect, Set<ClusterPoint<Point2D>> clusterPointsToBisect, double maxSSE) {
+		public ClusterInfo(int id, CenterPoint centroidToBisect, Set<ClusterPoint<Point2D>> clusterPointsToBisect, double maxSSE) {
 			super();
 			this.id = id;
 			this.centroidToBisect = centroidToBisect;
@@ -171,7 +171,7 @@ public class BisectingKMeansClustering extends Clustering2D {
 		}
 	}
 	
-	public Set<Centroid> getCentroidSet() {
+	public Set<CenterPoint> getCentroidSet() {
 		return centroidSet;
 	}
 	
@@ -188,7 +188,7 @@ public class BisectingKMeansClustering extends Clustering2D {
 		
 		// print centroids
 		System.out.println("== Centroid points ==");
-		for(Centroid p : bisecting.getCentroidSet()) {
+		for(CenterPoint p : bisecting.getCentroidSet()) {
 			System.out.println(p.getX() + "," + p.getY() + "," + p.getId());
 		}
 	}

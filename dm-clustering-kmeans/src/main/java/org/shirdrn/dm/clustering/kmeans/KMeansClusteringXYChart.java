@@ -133,19 +133,48 @@ public class KMeansClusteringXYChart extends JFrame implements ClusteringXYChart
 		this.clusterPointFile = clusterPointFile;
 	}
 	
+	static enum ClusterType {
+		K_MEANS,
+		BISECTING_K_MEANS,
+		K_MEDOIDS
+	}
+	
+	static class Arg {
+		int k;
+		String chartTitle;
+		File centroidPointFile;
+		File clusterPointFile;
+		
+		public Arg(int k, String chartTitle, File centroidPointFile, File clusterPointFile) {
+			super();
+			this.k = k;
+			this.chartTitle = chartTitle;
+			this.centroidPointFile = centroidPointFile;
+			this.clusterPointFile = clusterPointFile;
+		}
+	}
+	
 	public static void main(String args[]) {
 		int k = 10;
-		String bisecting = "bisecting_";
-		boolean isBisectingKMeans = true;
-		String chartTitle = (isBisectingKMeans ? "Bisecting " : "") + "K-means [k=" + k + "]";
 		File dir = FileUtils.getDataRootDir();
-		String prefix = isBisectingKMeans ? bisecting : "";
-		File centroidPointFile = new File(dir, prefix + "kmeans_" + k + "_centroids.txt");
-		File clusterPointFile = new File(dir, prefix + "kmeans_" + k + "_cluster_points.txt");
 		
-		final KMeansClusteringXYChart chart = new KMeansClusteringXYChart(chartTitle);
-		chart.setclusterPointFile(clusterPointFile);
-		chart.setCentroidPointFile(centroidPointFile);
+		final Map<ClusterType, Arg> configs = Maps.newHashMap();
+		configs.put(ClusterType.K_MEANS, new Arg(k, "K-means [k=" + k + "]", 
+				new File(dir, "kmeans_" + k + "_center_points.txt"), 
+				new File(dir, "kmeans_" + k + "_cluster_points.txt")));
+		configs.put(ClusterType.BISECTING_K_MEANS, new Arg(k, "Bisecting K-means [k=" + k + "]", 
+				new File(dir, "bisecting_kmeans_" + k + "_center_points.txt"), 
+				new File(dir, "bisecting_kmeans_" + k + "_cluster_points.txt")));
+		configs.put(ClusterType.K_MEDOIDS, new Arg(k, "K-medoids [k=" + k + "]", 
+				new File(dir, "kmedoids_" + k + "_center_points.txt"), 
+				new File(dir, "kmedoids_" + k + "_cluster_points.txt")));
+		
+		final ClusterType which = ClusterType.K_MEDOIDS;
+		final Arg arg = configs.get(which);
+		
+		final KMeansClusteringXYChart chart = new KMeansClusteringXYChart(arg.chartTitle);
+		chart.setclusterPointFile(arg.clusterPointFile);
+		chart.setCentroidPointFile(arg.centroidPointFile);
 		chart.setCentroidPointClusterId(9999);
         ChartUtils.generateXYChart(chart);
     }
