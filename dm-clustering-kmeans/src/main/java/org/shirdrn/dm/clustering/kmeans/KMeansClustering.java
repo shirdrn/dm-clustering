@@ -19,16 +19,15 @@ import org.apache.commons.logging.LogFactory;
 import org.shirdrn.dm.clustering.common.CenterPoint;
 import org.shirdrn.dm.clustering.common.ClusterPoint;
 import org.shirdrn.dm.clustering.common.ClusterPoint2D;
-import org.shirdrn.dm.clustering.common.Clustering2D;
 import org.shirdrn.dm.clustering.common.ClusteringResult;
 import org.shirdrn.dm.clustering.common.NamedThreadFactory;
 import org.shirdrn.dm.clustering.common.Point2D;
 import org.shirdrn.dm.clustering.common.utils.ClusteringUtils;
 import org.shirdrn.dm.clustering.common.utils.FileUtils;
 import org.shirdrn.dm.clustering.common.utils.MetricUtils;
-import org.shirdrn.dm.clustering.kmeans.common.SelectInitialCenterPointsPolicy;
+import org.shirdrn.dm.clustering.kmeans.common.AbstractKMeansClustering;
+import org.shirdrn.dm.clustering.kmeans.utils.KMeansPlusPlusInitialCenterPointsSelectionPolicy;
 
-import com.google.common.base.Preconditions;
 import com.google.common.collect.HashMultiset;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -41,16 +40,10 @@ import com.google.common.collect.Sets;
  *
  * @author yanjun
  */
-public class KMeansClustering extends Clustering2D {
+public class KMeansClustering extends AbstractKMeansClustering {
 
 	private static final Log LOG = LogFactory.getLog(KMeansClustering.class);
-	private int k;
-	private float maxMovingPointRate;
-	private final int maxIterations;
-	private final List<Point2D> allPoints = Lists.newArrayList();
-	private final SelectInitialCenterPointsPolicy selectInitialCentroidsPolicy;
 	private final ExecutorService executorService;
-	private Set<CenterPoint> centroidSet; 
 	private CountDownLatch latch;
 	private int taskIndex = 0;
 	private int calculatorQueueSize = 200;
@@ -59,18 +52,9 @@ public class KMeansClustering extends Clustering2D {
 	private volatile boolean clusteringCompletedFinally = false;
 	
 	public KMeansClustering(int k, float maxMovingPointRate, int maxIterations, int parallism) {
-		super(parallism);
-		Preconditions.checkArgument(k > 0, "Required: k > 0!");
-		Preconditions.checkArgument(maxMovingPointRate >= 0 && maxMovingPointRate <= 1, "Required: maxMovingPointRate >= 0 && maxMovingPointRate <= 1!");
-		Preconditions.checkArgument(maxIterations > 0, "Required: maxIterations > 0!");
-		this.k = k;
-		this.maxMovingPointRate = maxMovingPointRate;
-		this.maxIterations = maxIterations;
-		selectInitialCentroidsPolicy = new RandomlySelectInitialCenterPointsPolicy();
+		super(k, maxMovingPointRate, maxIterations, parallism);
 		latch = new CountDownLatch(parallism);
 		executorService = Executors.newCachedThreadPool(new NamedThreadFactory("CENTROID"));
-		LOG.info("Init: k=" + k + ", maxMovingPointRate=" + maxMovingPointRate + ", parallism=" + parallism + 
-				", selectInitialCentroidsPolicy=" + selectInitialCentroidsPolicy.getClass().getName());
 	}
 	
 	public void initialize(Collection<Point2D> points) {
@@ -98,7 +82,7 @@ public class KMeansClustering extends Clustering2D {
 		}
 		
 		// sort by centroid id ASC
-		TreeSet<CenterPoint> centroids = selectInitialCentroidsPolicy.select(k, allPoints);
+		TreeSet<CenterPoint> centroids = initialCentroidsSelectionPolicy.select(k, allPoints);
 		LOG.info("Initial selected centroids: " + centroids);
 		
 		int iterations = 0;
@@ -170,7 +154,9 @@ public class KMeansClustering extends Clustering2D {
 				clusteredPoints.put(id, set);
 				id++;
 			}
-			centroidSet = currentClusteringResult.clusteringPoints.keySet();
+			
+			// compute centroid set
+			centerPointSet.addAll(currentClusteringResult.clusteringPoints.keySet());
 		}
 	}
 
@@ -378,16 +364,14 @@ public class KMeansClustering extends Clustering2D {
 		}
 	}
 	
-	public Set<CenterPoint> getCentroidSet() {
-		return centroidSet;
-	}
-	
 	public static void main(String[] args) {
 		int k = 10;
 		float maxMovingPointRate = 0.01f;
 		int maxInterations = 50;
 		int parallism = 5;
 		KMeansClustering c = new KMeansClustering(k, maxMovingPointRate, maxInterations, parallism);
+		// set InitialCentroidsSelectionPolicy
+		c.setInitialCentroidsSelectionPolicy(new KMeansPlusPlusInitialCenterPointsSelectionPolicy());
 		File dir = FileUtils.getDataRootDir();
 		c.setInputFiles(new File(dir, "xy_zfmx.txt"));
 		c.initialize();
@@ -399,7 +383,7 @@ public class KMeansClustering extends Clustering2D {
 		
 		// print centroids
 		System.out.println("== Centroid points ==");
-		for(CenterPoint p : c.getCentroidSet()) {
+		for(CenterPoint p : c.getCenterPointSet()) {
 			System.out.println(p.getX() + "," + p.getY() + "," + p.getId());
 		}
 	}

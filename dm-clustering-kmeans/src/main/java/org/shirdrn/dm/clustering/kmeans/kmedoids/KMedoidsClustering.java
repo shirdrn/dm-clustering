@@ -21,17 +21,14 @@ import org.apache.commons.logging.LogFactory;
 import org.shirdrn.dm.clustering.common.CenterPoint;
 import org.shirdrn.dm.clustering.common.ClusterPoint;
 import org.shirdrn.dm.clustering.common.ClusterPoint2D;
-import org.shirdrn.dm.clustering.common.Clustering2D;
 import org.shirdrn.dm.clustering.common.ClusteringResult;
 import org.shirdrn.dm.clustering.common.DistanceCache;
 import org.shirdrn.dm.clustering.common.NamedThreadFactory;
 import org.shirdrn.dm.clustering.common.Point2D;
 import org.shirdrn.dm.clustering.common.utils.ClusteringUtils;
 import org.shirdrn.dm.clustering.common.utils.FileUtils;
-import org.shirdrn.dm.clustering.kmeans.RandomlySelectInitialCenterPointsPolicy;
-import org.shirdrn.dm.clustering.kmeans.common.SelectInitialCenterPointsPolicy;
+import org.shirdrn.dm.clustering.kmeans.common.AbstractKMeansClustering;
 
-import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -42,13 +39,9 @@ import com.google.common.collect.Sets;
  *
  * @author yanjun
  */
-public class KMedoidsClustering extends Clustering2D {
+public class KMedoidsClustering extends AbstractKMeansClustering {
 
 	private static final Log LOG = LogFactory.getLog(KMedoidsClustering.class);
-	private final int k;
-	private final List<Point2D> allPoints = Lists.newArrayList();
-	private TreeSet<CenterPoint> medoidSet;
-	private final SelectInitialCenterPointsPolicy selectInitialMedoidsPolicy;
 	private final List<NearestMedoidSeeker> seekers = Lists.newArrayList();
 	private int taskIndex = 0;
 	private int seekerQueueSize = 200;
@@ -61,10 +54,7 @@ public class KMedoidsClustering extends Clustering2D {
 	private final Object signalLock = new Object();
 	
 	public KMedoidsClustering(int k, int parallism) {
-		super(parallism);
-		Preconditions.checkArgument(k > 0, "Required: k > 0!");
-		this.k = k;
-		selectInitialMedoidsPolicy = new RandomlySelectInitialCenterPointsPolicy();
+		super(k, parallism, k, parallism);
 		distanceCache = new DistanceCache(Integer.MAX_VALUE);
 		executorService = Executors.newCachedThreadPool(new NamedThreadFactory("SEEKER"));
 		latch = new CountDownLatch(parallism);
@@ -79,7 +69,7 @@ public class KMedoidsClustering extends Clustering2D {
 		ClusterHolder currentHolder = new ClusterHolder();
 		ClusterHolder previousHolder = null;
 		
-		currentHolder.medoids = selectInitialMedoidsPolicy.select(k, allPoints);
+		currentHolder.medoids =initialCentroidsSelectionPolicy.select(k, allPoints);
 		LOG.info("Initial selected medoids: " + currentHolder.medoids);
 		
 		// start seeker threads
@@ -155,7 +145,7 @@ public class KMedoidsClustering extends Clustering2D {
 		}
 		
 		// finally result
-		medoidSet = previousHolder.medoids;
+		centerPointSet.addAll(previousHolder.medoids);
 		Iterator<Entry<CenterPoint, List<Point2D>>> iter = previousHolder.medoidWithNearestPointSet.entrySet().iterator();
 		while(iter.hasNext()) {
 			Entry<CenterPoint, List<Point2D>> entry = iter.next();
@@ -303,10 +293,6 @@ public class KMedoidsClustering extends Clustering2D {
 		}
 	}
 
-	public TreeSet<CenterPoint> getMedoidSet() {
-		return medoidSet;
-	}
-	
 	private NearestMedoidSeeker selectSeeker() {
 		int index = taskIndex++ % parallism;
 		return seekers.get(index);
@@ -393,7 +379,7 @@ public class KMedoidsClustering extends Clustering2D {
 		
 		// print medoids
 		System.out.println("== Centroid points ==");
-		for(CenterPoint p : c.getMedoidSet()) {
+		for(CenterPoint p : c.getCenterPointSet()) {
 			System.out.println(p.getX() + "," + p.getY() + "," + p.getId());
 		}
 	}

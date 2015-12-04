@@ -136,14 +136,15 @@ public class KMeansClusteringXYChart extends JFrame implements ClusteringXYChart
 	static enum ClusterType {
 		K_MEANS,
 		BISECTING_K_MEANS,
-		K_MEDOIDS
+		K_MEDOIDS,
+		K_MEANS_PLUS_PLUS
 	}
 	
 	static class Arg {
-		int k;
-		String chartTitle;
-		File centroidPointFile;
-		File clusterPointFile;
+		final int k;
+		final String chartTitle;
+		final File centroidPointFile;
+		final File clusterPointFile;
 		
 		public Arg(int k, String chartTitle, File centroidPointFile, File clusterPointFile) {
 			super();
@@ -152,6 +153,8 @@ public class KMeansClusteringXYChart extends JFrame implements ClusteringXYChart
 			this.centroidPointFile = centroidPointFile;
 			this.clusterPointFile = clusterPointFile;
 		}
+		
+		
 	}
 	
 	public static void main(String args[]) {
@@ -168,8 +171,11 @@ public class KMeansClusteringXYChart extends JFrame implements ClusteringXYChart
 		configs.put(ClusterType.K_MEDOIDS, new Arg(k, "K-medoids [k=" + k + "]", 
 				new File(dir, "kmedoids_" + k + "_center_points.txt"), 
 				new File(dir, "kmedoids_" + k + "_cluster_points.txt")));
+		configs.put(ClusterType.K_MEANS_PLUS_PLUS, new Arg(k, "K-means++ [k=" + k + "]", 
+				new File(dir, "kmeans++_" + k + "_center_points.txt"), 
+				new File(dir, "kmeans++_" + k + "_cluster_points.txt")));
 		
-		final ClusterType which = ClusterType.K_MEDOIDS;
+		final ClusterType which = ClusterType.K_MEANS_PLUS_PLUS;
 		final Arg arg = configs.get(which);
 		
 		final KMeansClusteringXYChart chart = new KMeansClusteringXYChart(arg.chartTitle);

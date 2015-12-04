@@ -1,4 +1,4 @@
-package org.shirdrn.dm.clustering.kmeans;
+package org.shirdrn.dm.clustering.kmeans.utils;
 
 import java.util.Iterator;
 import java.util.List;
@@ -8,11 +8,11 @@ import java.util.TreeSet;
 
 import org.shirdrn.dm.clustering.common.CenterPoint;
 import org.shirdrn.dm.clustering.common.Point2D;
-import org.shirdrn.dm.clustering.kmeans.common.SelectInitialCenterPointsPolicy;
+import org.shirdrn.dm.clustering.kmeans.common.InitialCenterPointsSelectionPolicy;
 
 import com.google.common.collect.Sets;
 
-public class RandomlySelectInitialCenterPointsPolicy implements SelectInitialCenterPointsPolicy {
+public class RandomlyInitialCenterPointsSelectionPolicy implements InitialCenterPointsSelectionPolicy {
 
 	private final Random random = new Random();
 	

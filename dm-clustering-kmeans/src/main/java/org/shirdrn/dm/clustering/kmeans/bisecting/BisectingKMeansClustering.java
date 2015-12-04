@@ -63,7 +63,7 @@ public class BisectingKMeansClustering extends Clustering2D {
 			
 			// merge cluster points for choosing cluster bisected again
 			int id = generateNewClusterId(clusteringPoints.keySet());
-			Set<CenterPoint> bisectedCentroids = kmeans.getCentroidSet();
+			Set<CenterPoint> bisectedCentroids = kmeans.getCenterPointSet();
 			Map<Integer, Set<ClusterPoint<Point2D>>> bisectedClusterPoints = clusteringResult.getClusteredPoints();
 			merge(clusteringPoints, id, bisectedCentroids, bisectedClusterPoints);
 			
