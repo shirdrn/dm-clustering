@@ -32,11 +32,19 @@ public class BisectingKMeansClustering extends Clustering2D {
 
 	private static final Log LOG = LogFactory.getLog(BisectingKMeansClustering.class);
 	private final int k;
+	private final int m; // times of bisecting trials
 	private final Set<CenterPoint> centroidSet = Sets.newTreeSet(); 
 	
-	public BisectingKMeansClustering(int k) {
+	public BisectingKMeansClustering(int k, int m) {
 		super(1);
 		this.k = k;
+		this.m = m;
+	}
+	
+	public BisectingKMeansClustering(int k, int m, int parallism) {
+		super(parallism);
+		this.k = k;
+		this.m = m;
 	}
 	
 	@Override
@@ -55,17 +63,33 @@ public class BisectingKMeansClustering extends Clustering2D {
 			LOG.info("Start bisecting iterations: #" + (++bisectingIterations) + ", bisectingK=" + bisectingK + ", maxMovingPointRate=" + maxMovingPointRate + 
 					", maxInterations=" + maxInterations + ", parallism=" + parallism);
 			// for k=bisectingK, execute k-means clustering
-			final KMeansClustering kmeans = new KMeansClustering(bisectingK, maxMovingPointRate, maxInterations, parallism);
-			kmeans.initialize(points);
-			kmeans.clustering();
-			// the clustering result should have 2 clusters
-			ClusteringResult<Point2D> clusteringResult = kmeans.getClusteringResult();
+			
+			// bisecting trials
+			KMeansClustering bestBisectingKmeans = null;
+			double minTotalSSE = Double.MAX_VALUE;
+			for (int i = 0; i < m; i++) {
+				final KMeansClustering kmeans = new KMeansClustering(bisectingK, maxMovingPointRate, maxInterations, parallism);
+				kmeans.initialize(points);
+				// the clustering result should have 2 clusters
+				kmeans.clustering();
+				double currentTotalSSE = computeTotalSSE(kmeans.getCenterPointSet(), kmeans.getClusteringResult());
+				if(bestBisectingKmeans == null) {
+					bestBisectingKmeans = kmeans;
+					minTotalSSE = currentTotalSSE;
+				} else {
+					if(currentTotalSSE < minTotalSSE) {
+						bestBisectingKmeans = kmeans;
+						minTotalSSE = currentTotalSSE;
+					}
+				}
+				LOG.info("Bisecting trial <<" + i + ">> : minTotalSSE=" + minTotalSSE + ", currentTotalSSE=" + currentTotalSSE);
+			}
+			LOG.info("Best biscting: minTotalSSE=" + minTotalSSE);
 			
 			// merge cluster points for choosing cluster bisected again
 			int id = generateNewClusterId(clusteringPoints.keySet());
-			Set<CenterPoint> bisectedCentroids = kmeans.getCenterPointSet();
-			Map<Integer, Set<ClusterPoint<Point2D>>> bisectedClusterPoints = clusteringResult.getClusteredPoints();
-			merge(clusteringPoints, id, bisectedCentroids, bisectedClusterPoints);
+			Set<CenterPoint> bisectedCentroids = bestBisectingKmeans.getCenterPointSet();
+			merge(clusteringPoints, id, bisectedCentroids, bestBisectingKmeans.getClusteringResult().getClusteredPoints());
 			
 			if(clusteringPoints.size() == k) {
 				break;
@@ -139,6 +163,18 @@ public class BisectingKMeansClustering extends Clustering2D {
 		return new ClusterInfo(clusterIdWithMaxSSE, centroidToBisect, clusterToBisect, maxSSE);
 	}
 	
+	private double computeTotalSSE(Set<CenterPoint> centroids, ClusteringResult<Point2D> clusteringResult) {
+		double sse = 0.0;
+		for(CenterPoint center : centroids) {
+			int clusterId = center.getId();
+			for(ClusterPoint<Point2D> p : clusteringResult.getClusteredPoints().get(clusterId)) {
+				double distance = MetricUtils.euclideanDistance(p.getPoint(), center);
+				sse += distance * distance;
+			}
+		}
+		return sse;
+	}
+	
 	private double computeSSE(CenterPoint centroid, Set<ClusterPoint<Point2D>> cpSet) {
 		double sse = 0.0;
 		for(ClusterPoint<Point2D> cp : cpSet) {
@@ -177,7 +213,9 @@ public class BisectingKMeansClustering extends Clustering2D {
 	
 	public static void main(String[] args) {
 		int k = 10;
-		BisectingKMeansClustering bisecting = new BisectingKMeansClustering(k);
+		int m = 100;
+		int parallism = 5;
+		BisectingKMeansClustering bisecting = new BisectingKMeansClustering(k, m, parallism);
 		File dir = FileUtils.getDataRootDir();
 		bisecting.setInputFiles(new File(dir, "xy_zfmx.txt"));
 		bisecting.clustering();

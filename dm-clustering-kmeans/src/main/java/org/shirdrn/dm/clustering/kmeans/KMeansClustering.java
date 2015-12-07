@@ -78,12 +78,12 @@ public class KMeansClustering extends AbstractKMeansClustering {
 			CentroidCalculator calculator = new CentroidCalculator(calculatorQueueSize);
 			calculators.add(calculator);
 			executorService.execute(calculator);
-			LOG.info("Centroid calculator started: " + calculator);
+			LOG.debug("Centroid calculator started: " + calculator);
 		}
 		
 		// sort by centroid id ASC
 		TreeSet<CenterPoint> centroids = initialCentroidsSelectionPolicy.select(k, allPoints);
-		LOG.info("Initial selected centroids: " + centroids);
+		LOG.debug("Initial selected centroids: " + centroids);
 		
 		int iterations = 0;
 		boolean stopped = false;
@@ -96,10 +96,10 @@ public class KMeansClustering extends AbstractKMeansClustering {
 			while(currentClusterMovingPointRate > maxMovingPointRate 
 					&& !stopped 
 					&& iterations < maxIterations) {
-				LOG.info("Start iterate: #" + (++iterations));
+				LOG.info("START iterate: #" + (++iterations));
 				
 				currentClusteringResult = computeCentroids(centroids);
-				LOG.info("Re-computed centroids: " + centroids);
+				LOG.debug("Re-computed centroids: " + centroids);
 				
 				// compute centroid convergence status
 				int numMovingPoints = 0;
@@ -120,7 +120,7 @@ public class KMeansClustering extends AbstractKMeansClustering {
 				centroids = currentClusteringResult.centroids;
 				currentClusterMovingPointRate = (float) numMovingPoints / totalPointCount;
 				
-				LOG.info("Clustering meta: k=" + k + 
+				LOG.info("FINISH iterate: #" + iterations + ", k=" + k + 
 						", numMovingPoints=" + numMovingPoints + 
 						", totalPointCount=" + totalPointCount +
 						", stopped=" + stopped +
@@ -131,8 +131,6 @@ public class KMeansClustering extends AbstractKMeansClustering {
 				for(CentroidCalculator calculator : calculators) {
 					calculator.reset();
 				}
-				
-				LOG.info("Finish iterate: #" + iterations);
 			}
 		} finally {
 			// notify all calculators to exit normally
@@ -261,7 +259,7 @@ public class KMeansClustering extends AbstractKMeansClustering {
 					e.printStackTrace();
 				}
 			}
-			LOG.info("Received finally notification, exited. ");
+			LOG.debug("Received finally notification, exited. ");
 		}
 
 		private void process() {
@@ -305,7 +303,7 @@ public class KMeansClustering extends AbstractKMeansClustering {
 			} finally {
 				accumulatedProcessedTasks += processedTasks;
 				latch.countDown();
-				LOG.info("Calculator finished: " + "processedTasks=" + processedTasks + 
+				LOG.debug("Calculator finished: " + "processedTasks=" + processedTasks + 
 						", accumulatedProcessedTasks=" + accumulatedProcessedTasks);
 			}
 		}
