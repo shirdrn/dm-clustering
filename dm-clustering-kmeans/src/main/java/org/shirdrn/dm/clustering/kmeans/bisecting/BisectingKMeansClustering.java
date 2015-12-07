@@ -33,18 +33,18 @@ public class BisectingKMeansClustering extends Clustering2D {
 	private static final Log LOG = LogFactory.getLog(BisectingKMeansClustering.class);
 	private final int k;
 	private final int m; // times of bisecting trials
+	private final float maxMovingPointRate;
 	private final Set<CenterPoint> centroidSet = Sets.newTreeSet(); 
 	
-	public BisectingKMeansClustering(int k, int m) {
-		super(1);
-		this.k = k;
-		this.m = m;
+	public BisectingKMeansClustering(int k, float maxMovingPointRate, int m) {
+		this(k, m, maxMovingPointRate, 1);
 	}
 	
-	public BisectingKMeansClustering(int k, int m, int parallism) {
+	public BisectingKMeansClustering(int k, int m, float maxMovingPointRate, int parallism) {
 		super(parallism);
 		this.k = k;
 		this.m = m;
+		this.maxMovingPointRate = maxMovingPointRate;
 	}
 	
 	@Override
@@ -55,13 +55,13 @@ public class BisectingKMeansClustering extends Clustering2D {
 		
 		final int bisectingK = 2;
 		int bisectingIterations = 0;
-		float maxMovingPointRate = 0.01f;
 		int maxInterations = 20;
 		List<Point2D> points = allPoints;
 		final Map<CenterPoint, Set<ClusterPoint<Point2D>>> clusteringPoints = Maps.newConcurrentMap();
 		while(clusteringPoints.size() <= k) {
 			LOG.info("Start bisecting iterations: #" + (++bisectingIterations) + ", bisectingK=" + bisectingK + ", maxMovingPointRate=" + maxMovingPointRate + 
 					", maxInterations=" + maxInterations + ", parallism=" + parallism);
+			
 			// for k=bisectingK, execute k-means clustering
 			
 			// bisecting trials
@@ -213,11 +213,12 @@ public class BisectingKMeansClustering extends Clustering2D {
 	
 	public static void main(String[] args) {
 		int k = 10;
-		int m = 100;
+		int m = 25;
+		float maxMovingPointRate = 0.01f;
 		int parallism = 5;
-		BisectingKMeansClustering bisecting = new BisectingKMeansClustering(k, m, parallism);
+		BisectingKMeansClustering bisecting = new BisectingKMeansClustering(k, m, maxMovingPointRate, parallism);
 		File dir = FileUtils.getDataRootDir();
-		bisecting.setInputFiles(new File(dir, "xy_zfmx.txt"));
+		bisecting.setInputFiles(new File(dir, "points.txt"));
 		bisecting.clustering();
 		
 		System.out.println("== Clustered points ==");

@@ -26,7 +26,6 @@ import org.shirdrn.dm.clustering.common.utils.ClusteringUtils;
 import org.shirdrn.dm.clustering.common.utils.FileUtils;
 import org.shirdrn.dm.clustering.common.utils.MetricUtils;
 import org.shirdrn.dm.clustering.kmeans.common.AbstractKMeansClustering;
-import org.shirdrn.dm.clustering.kmeans.utils.KMeansPlusPlusInitialCenterPointsSelectionPolicy;
 
 import com.google.common.collect.HashMultiset;
 import com.google.common.collect.Lists;
@@ -369,9 +368,9 @@ public class KMeansClustering extends AbstractKMeansClustering {
 		int parallism = 5;
 		KMeansClustering c = new KMeansClustering(k, maxMovingPointRate, maxInterations, parallism);
 		// set InitialCentroidsSelectionPolicy
-		c.setInitialCentroidsSelectionPolicy(new KMeansPlusPlusInitialCenterPointsSelectionPolicy());
+//		c.setInitialCentroidsSelectionPolicy(new KMeansPlusPlusInitialCenterPointsSelectionPolicy());
 		File dir = FileUtils.getDataRootDir();
-		c.setInputFiles(new File(dir, "xy_zfmx.txt"));
+		c.setInputFiles(new File(dir, "points.txt"));
 		c.initialize();
 		c.clustering();
 		

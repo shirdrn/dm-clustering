@@ -25,7 +25,7 @@ import com.google.common.collect.Maps;
 
 public class ChartUtils {
 
-	private static final Random RAND = new Random();
+	private static final Random RAND = new Random(System.currentTimeMillis());
 	
 	/**
 	 * Create a {@link XYSeriesCollection} object to render XY chart, and {@link XYSeriesCollection} object 
