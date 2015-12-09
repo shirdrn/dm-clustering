@@ -100,6 +100,7 @@ public class KMedoidsClustering extends AbstractKMeansClustering {
 					
 					// merge result
 					mergeMedoidAssignedResult(currentHolder);
+					LOG.debug("Merged result: " + currentHolder.medoidWithNearestPointSet);
 					
 					// compare cost for 2 iterations, we use SAD (sum of absolute differences)
 					if(previousSAD == 0.0) {
@@ -129,13 +130,16 @@ public class KMedoidsClustering extends AbstractKMeansClustering {
 				} catch(Exception e) {
 					Throwables.propagate(e);
 				} finally {
-					if(!finallyCompleted) {
-						latch = new CountDownLatch(parallism);
-						completeToAssignTask = false;
-					}
-					synchronized(signalLock) {
-						signalLock.notifyAll();
-					}
+					try {
+						if(!finallyCompleted) {
+							latch = new CountDownLatch(parallism);
+							completeToAssignTask = false;
+						}
+						Thread.sleep(10);
+						synchronized(signalLock) {
+							signalLock.notifyAll();
+						}
+					} catch (InterruptedException e) {}
 				}
 			}
 		} finally {
@@ -160,6 +164,7 @@ public class KMedoidsClustering extends AbstractKMeansClustering {
 	private void mergeMedoidAssignedResult(ClusterHolder currentHolder) {
 		currentHolder.medoidWithNearestPointSet = Maps.newTreeMap();
 		for(NearestMedoidSeeker seeker : seekers) {
+			LOG.debug("seeker.clusteringNearestPoints: " + seeker.clusteringNearestPoints);
 			Iterator<Entry<CenterPoint, List<Point2D>>> iter = seeker.clusteringNearestPoints.entrySet().iterator();
 			while(iter.hasNext()) {
 				Entry<CenterPoint, List<Point2D>> entry = iter.next();
@@ -174,6 +179,7 @@ public class KMedoidsClustering extends AbstractKMeansClustering {
 	}
 
 	private void assignNearestMedoids(final ClusterHolder holder, boolean firstTimeToAssign) {
+		LOG.debug("firstTimeToAssign=" + firstTimeToAssign);
 		try {
 			// assign tasks to seeker threads
 			if(firstTimeToAssign) {
@@ -181,7 +187,10 @@ public class KMedoidsClustering extends AbstractKMeansClustering {
 				for(CenterPoint medoid : holder.medoids) {
 					holder.centerPoints.add(medoid.toPoint());
 				}
+				LOG.debug("holder.centerPoints: " + holder.centerPoints);
+				
 				for(Point2D p : allPoints) {
+					LOG.debug("Assign point: " + p);
 					if(!holder.centerPoints.contains(p)) {
 						selectSeeker().q.put(new Task(holder.medoids, p));
 					}
@@ -215,7 +224,7 @@ public class KMedoidsClustering extends AbstractKMeansClustering {
 		
 		newHolder.centerPoints.remove(oldMedoid.toPoint());
 		newHolder.centerPoints.add(newPoint);
-		
+ 		
 		newHolder.medoids = Sets.newTreeSet();
 		newHolder.medoids.addAll(holder.medoidWithNearestPointSet.keySet());
 		newHolder.medoids.remove(oldMedoid);
@@ -322,10 +331,11 @@ public class KMedoidsClustering extends AbstractKMeansClustering {
 
 		private void assign() throws InterruptedException {
 			try {
-				while(!completeToAssignTask) {
-					while(!q.isEmpty()) {
-						processedTasks++;
-						final Task task = q.poll();
+				LOG.debug("Q size: " + q.size());
+				while(!(q.isEmpty() && completeToAssignTask)) {
+					processedTasks++;
+					final Task task = q.poll();
+					if(task != null) {
 						final Point2D p1 = task.point;
 						double minDistance = Double.MAX_VALUE;
 						CenterPoint nearestMedoid = null;
@@ -345,8 +355,9 @@ public class KMedoidsClustering extends AbstractKMeansClustering {
 							clusteringNearestPoints.put(nearestMedoid, points);
 						}
 						points.add(p1);
+					} else {
+						Thread.sleep(150);
 					}
-					Thread.sleep(150);
 				}
 			} catch (Exception e) {
 				e.printStackTrace();
@@ -371,7 +382,7 @@ public class KMedoidsClustering extends AbstractKMeansClustering {
 		int maxIterations = 1000;
 		KMedoidsClustering c = new KMedoidsClustering(k, maxMovingPointRate, maxIterations, parallism);
 		File dir = FileUtils.getDataRootDir();
-		c.setInputFiles(new File(dir, "xy_zfmx.txt"));
+		c.setInputFiles(new File(dir, "points.txt"));
 		c.clustering();
 		
 		System.out.println("== Clustered points ==");
