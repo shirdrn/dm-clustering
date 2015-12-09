@@ -32,7 +32,10 @@ public abstract class AbstractKMeansClustering extends Clustering2D {
 		this.k = k;
 		this.maxMovingPointRate = maxMovingPointRate;
 		this.maxIterations = maxIterations;
-		LOG.info("Init: k=" + k + ", maxMovingPointRate=" + maxMovingPointRate + ", parallism=" + parallism + 
+		LOG.info("Init: k=" + k + 
+				", maxMovingPointRate=" + maxMovingPointRate + 
+				", maxIterations=" + maxIterations + 
+				", parallism=" + parallism + 
 				", selectInitialCentroidsPolicy=" + initialCentroidsSelectionPolicy.getClass().getName());
 	}
 

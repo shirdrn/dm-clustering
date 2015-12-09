@@ -175,7 +175,7 @@ public class KMeansClusteringXYChart extends JFrame implements ClusteringXYChart
 				new File(dir, "kmeans++_" + k + "_center_points.txt"), 
 				new File(dir, "kmeans++_" + k + "_cluster_points.txt")));
 		
-		final ClusterType which = ClusterType.BISECTING_K_MEANS;
+		final ClusterType which = ClusterType.K_MEDOIDS;
 		final Arg arg = configs.get(which);
 		
 		final KMeansClusteringXYChart chart = new KMeansClusteringXYChart(arg.chartTitle);

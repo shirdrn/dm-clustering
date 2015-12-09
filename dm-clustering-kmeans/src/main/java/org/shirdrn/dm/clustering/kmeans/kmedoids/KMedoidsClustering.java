@@ -53,8 +53,8 @@ public class KMedoidsClustering extends AbstractKMeansClustering {
 	private volatile boolean finallyCompleted = false;
 	private final Object signalLock = new Object();
 	
-	public KMedoidsClustering(int k, int parallism) {
-		super(k, parallism, k, parallism);
+	public KMedoidsClustering(int k, float maxMovingPointRate, int maxIterations, int parallism) {
+		super(k, maxMovingPointRate, maxIterations, parallism);
 		distanceCache = new DistanceCache(Integer.MAX_VALUE);
 		executorService = Executors.newCachedThreadPool(new NamedThreadFactory("SEEKER"));
 		latch = new CountDownLatch(parallism);
@@ -87,7 +87,6 @@ public class KMedoidsClustering extends AbstractKMeansClustering {
 		int iterations = 0;
 		double previousSAD = 0.0;
 		double currentSAD = 0.0;
-		final int maxIterations = 200;
 		try {
 			while(!finallyCompleted) {
 				try {
@@ -368,7 +367,9 @@ public class KMedoidsClustering extends AbstractKMeansClustering {
 	public static void main(String[] args) {
 		int k = 10;
 		int parallism = 4;
-		KMedoidsClustering c = new KMedoidsClustering(k, parallism);
+		float maxMovingPointRate = 0.01f;
+		int maxIterations = 1000;
+		KMedoidsClustering c = new KMedoidsClustering(k, maxMovingPointRate, maxIterations, parallism);
 		File dir = FileUtils.getDataRootDir();
 		c.setInputFiles(new File(dir, "xy_zfmx.txt"));
 		c.clustering();
