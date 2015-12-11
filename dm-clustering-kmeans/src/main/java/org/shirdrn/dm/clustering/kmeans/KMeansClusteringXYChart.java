@@ -145,6 +145,7 @@ public class KMeansClusteringXYChart extends JFrame implements ClusteringXYChart
 		final String chartTitle;
 		final File centroidPointFile;
 		final File clusterPointFile;
+		int maxIterations;
 		
 		public Arg(int k, String chartTitle, File centroidPointFile, File clusterPointFile) {
 			super();
@@ -154,11 +155,17 @@ public class KMeansClusteringXYChart extends JFrame implements ClusteringXYChart
 			this.clusterPointFile = clusterPointFile;
 		}
 		
+		public Arg(int k, int maxIterations, String chartTitle, File centroidPointFile, File clusterPointFile) {
+			this(k, chartTitle, centroidPointFile, clusterPointFile);
+			this.maxIterations = maxIterations;
+		}
+		
 		
 	}
 	
 	public static void main(String args[]) {
 		int k = 10;
+		int maxIterations = 1000;
 		File dir = FileUtils.getDataRootDir();
 		
 		final Map<ClusterType, Arg> configs = Maps.newHashMap();
@@ -168,14 +175,14 @@ public class KMeansClusteringXYChart extends JFrame implements ClusteringXYChart
 		configs.put(ClusterType.BISECTING_K_MEANS, new Arg(k, "Bisecting K-means [k=" + k + "]", 
 				new File(dir, "bisecting_kmeans_" + k + "_center_points.txt"), 
 				new File(dir, "bisecting_kmeans_" + k + "_cluster_points.txt")));
-		configs.put(ClusterType.K_MEDOIDS, new Arg(k, "K-medoids [k=" + k + "]", 
-				new File(dir, "kmedoids_" + k + "_center_points.txt"), 
-				new File(dir, "kmedoids_" + k + "_cluster_points.txt")));
+		configs.put(ClusterType.K_MEDOIDS, new Arg(k, "K-medoids [k=" + k + ", maxIterations=" + maxIterations + "]", 
+				new File(dir, "kmedoids_" + k + "_" + maxIterations + "_center_points.txt"), 
+				new File(dir, "kmedoids_" + k + "_" + maxIterations + "_cluster_points.txt")));
 		configs.put(ClusterType.K_MEANS_PLUS_PLUS, new Arg(k, "K-means++ [k=" + k + "]", 
 				new File(dir, "kmeans++_" + k + "_center_points.txt"), 
 				new File(dir, "kmeans++_" + k + "_cluster_points.txt")));
 		
-		final ClusterType which = ClusterType.K_MEDOIDS;
+		final ClusterType which = ClusterType.K_MEANS;
 		final Arg arg = configs.get(which);
 		
 		final KMeansClusteringXYChart chart = new KMeansClusteringXYChart(arg.chartTitle);

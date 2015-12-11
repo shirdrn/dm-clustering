@@ -24,6 +24,10 @@ public abstract class AbstractKMeansClustering extends Clustering2D {
 	protected final TreeSet<CenterPoint> centerPointSet = Sets.newTreeSet();
 	protected InitialCenterPointsSelectionPolicy initialCentroidsSelectionPolicy = new RandomlyInitialCenterPointsSelectionPolicy();
 	
+	public AbstractKMeansClustering(int k, int maxIterations, int parallism) {
+		this(k, 1, maxIterations, parallism);
+	}
+	
 	public AbstractKMeansClustering(int k, float maxMovingPointRate, int maxIterations, int parallism) {
 		super(parallism);
 		Preconditions.checkArgument(k > 0, "Required: k > 0!");

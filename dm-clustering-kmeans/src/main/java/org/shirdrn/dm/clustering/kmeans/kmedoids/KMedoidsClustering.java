@@ -44,7 +44,7 @@ public class KMedoidsClustering extends AbstractKMeansClustering {
 	private static final Log LOG = LogFactory.getLog(KMedoidsClustering.class);
 	private final List<NearestMedoidSeeker> seekers = Lists.newArrayList();
 	private int taskIndex = 0;
-	private int seekerQueueSize = 200;
+	private final int seekerQueueSize = 200;
 	private CountDownLatch latch;
 	private final ExecutorService executorService;
 	private volatile boolean completeToAssignTask = false;
@@ -53,8 +53,8 @@ public class KMedoidsClustering extends AbstractKMeansClustering {
 	private volatile boolean finallyCompleted = false;
 	private final Object signalLock = new Object();
 	
-	public KMedoidsClustering(int k, float maxMovingPointRate, int maxIterations, int parallism) {
-		super(k, maxMovingPointRate, maxIterations, parallism);
+	public KMedoidsClustering(int k, int maxIterations, int parallism) {
+		super(k, maxIterations, parallism);
 		distanceCache = new DistanceCache(Integer.MAX_VALUE);
 		executorService = Executors.newCachedThreadPool(new NamedThreadFactory("SEEKER"));
 		latch = new CountDownLatch(parallism);
@@ -69,7 +69,7 @@ public class KMedoidsClustering extends AbstractKMeansClustering {
 		ClusterHolder currentHolder = new ClusterHolder();
 		ClusterHolder previousHolder = null;
 		
-		currentHolder.medoids =initialCentroidsSelectionPolicy.select(k, allPoints);
+		currentHolder.medoids = initialCentroidsSelectionPolicy.select(k, allPoints);
 		LOG.info("Initial selected medoids: " + currentHolder.medoids);
 		
 		// start seeker threads
@@ -84,7 +84,7 @@ public class KMedoidsClustering extends AbstractKMeansClustering {
 		// /////////////////
 		
 		boolean firstTimeToAssign = true;
-		int iterations = 0;
+		int numIterations = 0;
 		double previousSAD = 0.0;
 		double currentSAD = 0.0;
 		try {
@@ -108,9 +108,6 @@ public class KMedoidsClustering extends AbstractKMeansClustering {
 						previousSAD = currentSAD;
 						currentSAD = computeSAD(currentHolder);
 					} else {
-						RandomPoint randomPoint = selectNonCenterPointRandomly(currentHolder);
-						LOG.debug("Randomly selected: " + randomPoint);
-						
 						// compute current cost when using random point to substitute for the medoid
 						currentSAD = computeSAD(currentHolder);
 						// compare SADs
@@ -119,12 +116,15 @@ public class KMedoidsClustering extends AbstractKMeansClustering {
 							previousSAD = currentSAD;
 						}
 						
+						RandomPoint randomPoint = selectNonCenterPointRandomly(currentHolder);
+						LOG.debug("Randomly selected: " + randomPoint);
+						
 						// construct new cluster holder
 						currentHolder = constructNewHolder(currentHolder, randomPoint);
 					}
-					LOG.info("Iteration #" + (++iterations) + ": previousSAD=" + previousSAD + ", currentSAD=" + currentSAD);
+					LOG.info("Iteration #" + (++numIterations) + ": previousSAD=" + previousSAD + ", currentSAD=" + currentSAD);
 					
-					if(iterations > maxIterations) {
+					if(numIterations > maxIterations) {
 						finallyCompleted = true;
 					}
 				} catch(Exception e) {
@@ -214,27 +214,36 @@ public class KMedoidsClustering extends AbstractKMeansClustering {
 
 	private ClusterHolder constructNewHolder(final ClusterHolder holder, RandomPoint randomPoint) {
 		ClusterHolder newHolder = new ClusterHolder();
+		
+		// collect center points with type Point2D for a holder object
+		// from previous result of clustering procedure
 		newHolder.centerPoints = Sets.newHashSet();
 		for(CenterPoint c : holder.medoidWithNearestPointSet.keySet()) {
 			newHolder.centerPoints.add(c.toPoint());
 		}
+		
 		Point2D newPoint = randomPoint.point;
 		CenterPoint oldMedoid = randomPoint.medoid;
+		
+		// create a new center point with type CenterPoint based on the randomly selected non-medoid point
+		// and it's id is equal to the old medoid's
 		CenterPoint newMedoid = new CenterPoint(oldMedoid.getId(), newPoint);
 		
+		// use new medoid above to substitute the old medoid
 		newHolder.centerPoints.remove(oldMedoid.toPoint());
 		newHolder.centerPoints.add(newPoint);
  		
 		newHolder.medoids = Sets.newTreeSet();
 		newHolder.medoids.addAll(holder.medoidWithNearestPointSet.keySet());
-		newHolder.medoids.remove(oldMedoid);
+		newHolder.medoids.remove(oldMedoid); // remove old medoid from center point set of new holder object
 		newHolder.medoids.add(newMedoid);
 		
-		// share the same medoidWithNearestPointSet
-		newHolder.medoidWithNearestPointSet = holder.medoidWithNearestPointSet;
+		// copy the holder's medoidWithNearestPointSet, and modify it
+		newHolder.medoidWithNearestPointSet = Maps.newTreeMap();
+		newHolder.medoidWithNearestPointSet.putAll(holder.medoidWithNearestPointSet);
 		List<Point2D> oldPoints = newHolder.medoidWithNearestPointSet.get(oldMedoid);
-		oldPoints.remove(newPoint);
-		oldPoints.add(oldMedoid.toPoint());
+		oldPoints.remove(newPoint); // remove new randomly selected non-medoid point from previous result set of clustering
+		oldPoints.add(oldMedoid.toPoint()); // add old medoid point to the non-medoid set
 		newHolder.medoidWithNearestPointSet.put(newMedoid, oldPoints);
 		return newHolder;
 	}
@@ -275,9 +284,12 @@ public class KMedoidsClustering extends AbstractKMeansClustering {
 	
 	private class ClusterHolder {
 		
-		TreeMap<CenterPoint, List<Point2D>> medoidWithNearestPointSet;
-		Set<Point2D> centerPoints;
-		TreeSet<CenterPoint> medoids;
+		/** snapshot of clustering result: medoids of clustering result, as well as non-medoid points */
+		private TreeMap<CenterPoint, List<Point2D>> medoidWithNearestPointSet;
+		/** center point set represented by Point2D */
+		private Set<Point2D> centerPoints; 
+		/** center point set represented by CenterPoint */
+		private TreeSet<CenterPoint> medoids;
 		
 		public ClusterHolder() {
 			super();
@@ -285,9 +297,10 @@ public class KMedoidsClustering extends AbstractKMeansClustering {
 	}
 	
 	private class RandomPoint {
-		
-		final CenterPoint medoid; // medoid which the random point belongs to
-		final Point2D point;
+		/** medoid which the random point belongs to */
+		private final CenterPoint medoid;
+		/** a non-medoid point selected randomly */
+		private final Point2D point;
 		
 		public RandomPoint(CenterPoint medoid, Point2D point) {
 			super();
@@ -378,9 +391,8 @@ public class KMedoidsClustering extends AbstractKMeansClustering {
 	public static void main(String[] args) {
 		int k = 10;
 		int parallism = 4;
-		float maxMovingPointRate = 0.01f;
 		int maxIterations = 1000;
-		KMedoidsClustering c = new KMedoidsClustering(k, maxMovingPointRate, maxIterations, parallism);
+		KMedoidsClustering c = new KMedoidsClustering(k, maxIterations, parallism);
 		File dir = FileUtils.getDataRootDir();
 		c.setInputFiles(new File(dir, "points.txt"));
 		c.clustering();
@@ -390,7 +402,7 @@ public class KMedoidsClustering extends AbstractKMeansClustering {
 		ClusteringUtils.print2DClusterPoints(result.getClusteredPoints());
 		
 		// print medoids
-		System.out.println("== Centroid points ==");
+		System.out.println("== Medoid points ==");
 		for(CenterPoint p : c.getCenterPointSet()) {
 			System.out.println(p.getX() + "," + p.getY() + "," + p.getId());
 		}
